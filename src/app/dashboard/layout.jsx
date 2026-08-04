@@ -1,0 +1,19 @@
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { Container } from "@mui/material";
+import { authOptions } from "@/lib/auth";
+import Navbar from "@/components/Navbar";
+
+export default async function DashboardLayout({ children }) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) redirect("/login");
+
+  return (
+    <>
+      <Navbar userName={session.user.name || ""} />
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {children}
+      </Container>
+    </>
+  );
+}

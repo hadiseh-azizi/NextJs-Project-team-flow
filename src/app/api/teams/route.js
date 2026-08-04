@@ -1,0 +1,44 @@
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { connectDB } from "@/lib/mongodb";
+import Team from "@/models/Team";
+import { toTeamDTO } from "@/lib/serialize";
+
+// Teams the current user manages or is a member of.
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const userId = session.user.id;
+
+  await connectDB();
+
+  const teams = await Team.find({ $or: [{ manager: userId }, { members: userId }] })
+    .populate("manager", "name email")
+    .populate("members", "name email")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return NextResponse.json(teams.map(toTeamDTO));
+}
+
+// Creating a team makes the current user its manager. The manager is also
+// added as a member so they can be assigned tasks like anyone else.
+export async function POST(req) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const userId = session.user.id;
+
+  const { name } = await req.json();
+  if (!name) return NextResponse.json({ error: "Team name is required" }, { status: 400 });
+
+  await connectDB();
+
+  const team = await Team.create({ name, manager: userId, members: [userId] });
+  const populated = await Team.findById(team._id)
+    .populate("manager", "name email")
+    .populate("members", "name email")
+    .lean();
+
+  return NextResponse.json(toTeamDTO(populated), { status: 201 });
+}
