@@ -40,6 +40,7 @@ export async function PATCH(req, { params }) {
   if (body.description !== undefined) task.description = body.description;
   if (body.assigneeIds !== undefined) task.assignees = body.assigneeIds;
   if (body.dueDate !== undefined) task.dueDate = body.dueDate ? new Date(body.dueDate) : null;
+  if (body.color !== undefined) task.color = body.color;
   await task.save();
 
   const populated = await Task.findById(task._id).populate("assignees", "name").lean();

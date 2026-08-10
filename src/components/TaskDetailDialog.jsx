@@ -12,6 +12,7 @@ import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import ColorSwatchPicker from "@/components/ColorSwatchPicker";
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -23,12 +24,23 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
   const [assigneeIds, setAssigneeIds] = useState(task.assignees.map((a) => a.id));
   const [savingAssignees, setSavingAssignees] = useState(false);
   const [columnId, setColumnId] = useState(task.columnId);
+  const [color, setColor] = useState(task.color);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
   const [confirmDeleteAttachment, setConfirmDeleteAttachment] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef(null);
+
+  async function saveColor(newColor) {
+    setColor(newColor);
+    await fetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ color: newColor }),
+    });
+    onChanged();
+  }
 
   async function saveAssignees(newIds) {
     setAssigneeIds(newIds);
@@ -147,6 +159,13 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
             </Typography>
           )}
         </FormControl>
+
+        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1 }}>
+          COLOR
+        </Typography>
+        <Box sx={{ mb: 3 }}>
+          <ColorSwatchPicker value={color} onChange={saveColor} />
+        </Box>
 
         <Divider sx={{ mb: 2 }} />
 

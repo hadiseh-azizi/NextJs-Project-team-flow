@@ -2,17 +2,26 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Box, Typography, Button, Grid, Card, CardActionArea, CardContent, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, CircularProgress, AvatarGroup, Avatar,
+  Checkbox, FormControlLabel, Collapse, Divider,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
+import { useThemeMode } from "@/components/ThemeModeContext";
+import { pastelForString } from "@/lib/pastelColor";
 
 export default function TeamsPage() {
+  const router = useRouter();
+  const { mode } = useThemeMode();
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
+  const [addProject, setAddProject] = useState(false);
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function load() {
@@ -26,17 +35,43 @@ export default function TeamsPage() {
     load();
   }, []);
 
+  function resetForm() {
+    setShowForm(false);
+    setName("");
+    setAddProject(false);
+    setProjectName("");
+    setProjectDescription("");
+  }
+
   async function handleCreate(e) {
     e.preventDefault();
     setSubmitting(true);
-    await fetch("/api/teams", {
+
+    const teamRes = await fetch("/api/teams", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     });
+    const team = await teamRes.json();
+
+    // Creating the team's first project right here saves a trip to the
+    // Projects page and back — most people creating a team are about to
+    // start a project for it anyway.
+    if (addProject && projectName.trim()) {
+      const projectRes = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: projectName, description: projectDescription, teamId: team.id }),
+      });
+      const project = await projectRes.json();
+      setSubmitting(false);
+      resetForm();
+      router.push(`/dashboard/projects/${project.id}`);
+      return;
+    }
+
     setSubmitting(false);
-    setShowForm(false);
-    setName("");
+    resetForm();
     load();
   }
 
@@ -60,7 +95,7 @@ export default function TeamsPage() {
         Every project belongs to a team. To create a new project, you'll first need to manage a team.
       </Typography>
 
-      <Dialog open={showForm} onClose={() => setShowForm(false)} fullWidth maxWidth="xs">
+      <Dialog open={showForm} onClose={resetForm} fullWidth maxWidth="xs">
         <form onSubmit={handleCreate}>
           <DialogTitle sx={{ fontWeight: 700 }}>New team</DialogTitle>
           <DialogContent>
@@ -71,15 +106,41 @@ export default function TeamsPage() {
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              sx={{ mt: 1 }}
+              sx={{ mt: 1, mb: 1 }}
             />
+
+            <FormControlLabel
+              control={<Checkbox checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />}
+              label="Also create a project for this team"
+              sx={{ mt: 0.5 }}
+            />
+
+            <Collapse in={addProject}>
+              <Divider sx={{ my: 1.5 }} />
+              <TextField
+                label="Project name"
+                fullWidth
+                required={addProject}
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                label="Description (optional)"
+                fullWidth
+                multiline
+                rows={2}
+                value={projectDescription}
+                onChange={(e) => setProjectDescription(e.target.value)}
+              />
+            </Collapse>
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
-            <Button onClick={() => setShowForm(false)} color="inherit">
+            <Button onClick={resetForm} color="inherit">
               Cancel
             </Button>
             <Button type="submit" variant="contained" disabled={submitting}>
-              {submitting ? "Creating..." : "Create team"}
+              {submitting ? "Creating..." : addProject ? "Create team & project" : "Create team"}
             </Button>
           </DialogActions>
         </form>
@@ -110,7 +171,7 @@ export default function TeamsPage() {
                     </Typography>
                     <AvatarGroup max={5} sx={{ justifyContent: "flex-end" }}>
                       {t.members.map((m) => (
-                        <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12 }}>
+                        <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>
                           {m.name.slice(0, 1)}
                         </Avatar>
                       ))}

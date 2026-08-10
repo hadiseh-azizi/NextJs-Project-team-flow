@@ -11,21 +11,41 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
+    setNeedsVerification(false);
+    setResent(false);
     setLoading(true);
 
     const res = await signIn("credentials", { email, password, redirect: false });
 
     setLoading(false);
     if (res?.error) {
-      setError("Incorrect email or password");
+      if (res.error === "EmailNotVerified") {
+        setNeedsVerification(true);
+      } else {
+        setError("Incorrect email or password");
+      }
       return;
     }
     router.push("/dashboard");
+  }
+
+  async function handleResend() {
+    setResending(true);
+    await fetch("/api/auth/resend-verification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    setResending(false);
+    setResent(true);
   }
 
   return (
@@ -58,6 +78,24 @@ export default function LoginPage() {
         {error && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {error}
+          </Alert>
+        )}
+
+        {needsVerification && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            action={
+              !resent && (
+                <Button color="inherit" size="small" onClick={handleResend} disabled={resending}>
+                  {resending ? "Sending..." : "Resend"}
+                </Button>
+              )
+            }
+          >
+            {resent
+              ? "Verification email resent — check your inbox."
+              : "Please verify your email before signing in."}
           </Alert>
         )}
 

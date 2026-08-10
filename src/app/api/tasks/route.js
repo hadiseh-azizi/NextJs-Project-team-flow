@@ -12,7 +12,7 @@ export async function POST(req) {
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const userId = session.user.id;
 
-  const { projectId, columnId, title, description, assigneeIds, dueDate } = await req.json();
+  const { projectId, columnId, title, description, assigneeIds, dueDate, color } = await req.json();
   if (!title) return NextResponse.json({ error: "Task title is required" }, { status: 400 });
 
   await connectDB();
@@ -41,6 +41,7 @@ export async function POST(req) {
     description,
     assignees,
     dueDate: dueDate ? new Date(dueDate) : null,
+    color: color || null,
     order,
   });
 

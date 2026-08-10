@@ -1,7 +1,12 @@
+"use client";
+
 import Link from "next/link";
 import { Card, CardActionArea, CardContent, Box, Typography, LinearProgress, Chip } from "@mui/material";
+import { useThemeMode } from "@/components/ThemeModeContext";
+import { pastelForString } from "@/lib/pastelColor";
 
 export default function ProjectCard({ project }) {
+  const { mode } = useThemeMode();
   const total = project.tasks.length;
   const doneColumnIds = new Set(project.columns.filter((c) => c.isDoneColumn).map((c) => c.id));
   const done = project.tasks.filter((t) => doneColumnIds.has(t.columnId)).length;
@@ -18,7 +23,7 @@ export default function ProjectCard({ project }) {
             <Chip
               label={project.team.name}
               size="small"
-              sx={{ bgcolor: "rgba(181,74,44,0.08)", color: "primary.main" }}
+              sx={{ bgcolor: pastelForString(project.team.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}
             />
           </Box>
           {project.description && (

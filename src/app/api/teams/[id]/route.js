@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Team from "@/models/Team";
+import Invitation from "@/models/Invitation";
 import { toTeamDTO } from "@/lib/serialize";
 
 export async function GET(req, { params }) {
@@ -18,8 +19,13 @@ export async function GET(req, { params }) {
     .lean();
   if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
 
-  const isMember = String(team.manager._id) === userId || team.members.some((m) => String(m._id) === userId);
+  const isManager = String(team.manager._id) === userId;
+  const isMember = isManager || team.members.some((m) => String(m._id) === userId);
   if (!isMember) return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-  return NextResponse.json(toTeamDTO(team));
+  // Pending (not-yet-registered) invitations are only shown to the manager
+  // — the same person who's allowed to send them in the first place.
+  const pendingInvitations = isManager ? await Invitation.find({ team: params.id }).sort({ createdAt: -1 }).lean() : null;
+
+  return NextResponse.json(toTeamDTO(team, pendingInvitations));
 }

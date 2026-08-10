@@ -4,7 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Team from "@/models/Team";
 import User from "@/models/User";
+import Invitation from "@/models/Invitation";
 import { toTeamDTO } from "@/lib/serialize";
+import { sendTeamInviteEmail } from "@/lib/email";
 
 // Only the team manager can add or remove members — this is the boundary
 // that keeps one team's roster from being edited by outsiders.
@@ -23,9 +25,23 @@ export async function POST(req, { params }) {
 
   const { email } = await req.json();
   const invitedUser = await User.findOne({ email }).lean();
+
+  // No account with this email yet — record a pending invitation and email
+  // them a sign-up link. They'll be added to the team automatically the
+  // moment they register with this same address.
   if (!invitedUser) {
-    return NextResponse.json({ error: "No user found with this email" }, { status: 404 });
+    const existingInvite = await Invitation.findOne({ email: email.toLowerCase(), team: params.id }).lean();
+    if (existingInvite) {
+      return NextResponse.json({ error: "This email has already been invited" }, { status: 409 });
+    }
+
+    const manager = await User.findById(userId).select("name").lean();
+    await Invitation.create({ email, team: params.id, invitedBy: userId });
+    await sendTeamInviteEmail({ to: email, teamName: team.name, inviterName: manager.name });
+
+    return NextResponse.json({ status: "invited", email }, { status: 201 });
   }
+
   if (team.members.some((m) => String(m) === String(invitedUser._id))) {
     return NextResponse.json({ error: "This user is already a team member" }, { status: 409 });
   }
@@ -38,7 +54,7 @@ export async function POST(req, { params }) {
     .populate("members", "name email")
     .lean();
 
-  return NextResponse.json(toTeamDTO(populated), { status: 201 });
+  return NextResponse.json({ status: "added", team: toTeamDTO(populated) }, { status: 201 });
 }
 
 export async function DELETE(req, { params }) {

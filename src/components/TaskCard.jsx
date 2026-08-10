@@ -3,8 +3,14 @@
 import { Card, CardContent, Box, Typography, IconButton, AvatarGroup, Avatar, Chip } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
+import { useThemeMode } from "@/components/ThemeModeContext";
+import { resolveTaskColor } from "@/lib/taskColors";
+import { pastelForString } from "@/lib/pastelColor";
 
 export default function TaskCard({ task, onDragStart, onDragOverCard, onDelete, onOpen, dropIndicator }) {
+  const { mode } = useThemeMode();
+  const cardColor = resolveTaskColor(task.color, mode);
+
   return (
     <Box sx={{ position: "relative" }}>
       {dropIndicator === "before" && (
@@ -17,7 +23,7 @@ export default function TaskCard({ task, onDragStart, onDragOverCard, onDelete, 
         onClick={() => onOpen(task)}
         sx={{
           cursor: "grab",
-          bgcolor: "background.paper",
+          bgcolor: cardColor || "background.paper",
           "&:active": { cursor: "grabbing" },
           "&:hover .task-delete-btn": { opacity: 1 },
           "&:hover": { borderColor: "#E8B8A3", boxShadow: "0 2px 10px rgba(28,27,25,0.06)" },
@@ -64,9 +70,9 @@ export default function TaskCard({ task, onDragStart, onDragOverCard, onDelete, 
               )}
             </Box>
             {task.assignees.length > 0 && (
-              <AvatarGroup max={4} sx={{ "& .MuiAvatar-root": { width: 22, height: 22, fontSize: 11, borderColor: "background.paper" } }}>
+              <AvatarGroup max={4} sx={{ "& .MuiAvatar-root": { width: 22, height: 22, fontSize: 11, borderColor: cardColor || "background.paper" } }}>
                 {task.assignees.map((a) => (
-                  <Avatar key={a.id} sx={{ bgcolor: "primary.main" }}>
+                  <Avatar key={a.id} sx={{ bgcolor: pastelForString(a.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>
                     {a.name.slice(0, 1)}
                   </Avatar>
                 ))}

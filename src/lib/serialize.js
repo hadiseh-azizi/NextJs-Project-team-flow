@@ -10,12 +10,21 @@ export function toUserDTO(user) {
   return { id: idStr(user._id), name: user.name, email: user.email };
 }
 
-export function toTeamDTO(team) {
+export function toInvitationDTO(inv) {
+  return {
+    id: idStr(inv._id),
+    email: inv.email,
+    createdAt: new Date(inv.createdAt).toISOString(),
+  };
+}
+
+export function toTeamDTO(team, pendingInvitations = null) {
   return {
     id: idStr(team._id),
     name: team.name,
     manager: toUserDTO(team.manager),
     members: (team.members || []).map(toUserDTO),
+    ...(pendingInvitations ? { pendingInvitations: pendingInvitations.map(toInvitationDTO) } : {}),
   };
 }
 
@@ -48,6 +57,7 @@ export function toTaskDTO(task) {
     columnId: idStr(task.column),
     order: task.order,
     dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
+    color: task.color ?? null,
     assignees: (task.assignees || []).map(toUserDTO),
     attachments: (task.attachments || []).map(toAttachmentDTO),
     projectId: idStr(task.project),

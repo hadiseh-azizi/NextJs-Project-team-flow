@@ -70,7 +70,7 @@ export default async function DashboardPage() {
           <Typography color="text.secondary" variant="body2">
             You don't have any projects yet.
           </Typography>
-          <Button component={Link} href="/dashboard/projects" variant="contained" size="large">
+          <Button component={Link} href="/dashboard/projects?new=1" variant="contained" size="large">
             Create your first project
           </Button>
         </Stack>

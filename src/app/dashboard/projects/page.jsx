@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Box, Typography, Button, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, MenuItem, CircularProgress, Alert,
@@ -10,8 +11,10 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import ProjectCard from "@/components/ProjectCard";
 
-export default function ProjectsPage() {
+function ProjectsPageInner() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [projects, setProjects] = useState([]);
   const [myTeams, setMyTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +35,17 @@ export default function ProjectsPage() {
   useEffect(() => {
     load();
   }, []);
+
+  // Coming from a link like /dashboard/projects?new=1 (e.g. the "Create
+  // your first project" button on the dashboard) opens the dialog right
+  // away instead of just landing on an empty list.
+  useEffect(() => {
+    if (searchParams.get("new")) {
+      setShowForm(true);
+      router.replace("/dashboard/projects");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Only teams the current user manages can receive new projects — the
   // server enforces this too, this is just for a cleaner picker.
@@ -152,5 +166,19 @@ export default function ProjectsPage() {
         </Grid>
       )}
     </Box>
+  );
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense
+      fallback={
+        <Box display="flex" justifyContent="center" py={8}>
+          <CircularProgress />
+        </Box>
+      }
+    >
+      <ProjectsPageInner />
+    </Suspense>
   );
 }

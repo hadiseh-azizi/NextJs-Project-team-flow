@@ -23,6 +23,13 @@ export const authOptions = {
         const valid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!valid) return null;
 
+        // Thrown errors surface their message as the `error` value on the
+        // client's signIn() result, which is how the login page tells
+        // "wrong password" apart from "you haven't verified your email yet".
+        if (!user.emailVerified) {
+          throw new Error("EmailNotVerified");
+        }
+
         return { id: String(user._id), name: user.name, email: user.email };
       },
     }),

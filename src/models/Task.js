@@ -17,6 +17,7 @@ const TaskSchema = new Schema({
   column: { type: Schema.Types.ObjectId, ref: "Column", required: true },
   order: { type: Number, default: 0 },
   dueDate: { type: Date, default: null },
+  color: { type: String, default: null }, // pastel label key, e.g. "rose" — see lib/taskColors.js
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
   assignees: [{ type: Schema.Types.ObjectId, ref: "User" }], // Trello-style: 0..N people
   attachments: [AttachmentSchema],

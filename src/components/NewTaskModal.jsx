@@ -6,12 +6,14 @@ import {
   TextField, Button, MenuItem, Grid, Select, InputLabel, FormControl, Checkbox,
   ListItemText, Chip, Box, OutlinedInput, Typography,
 } from "@mui/material";
+import ColorSwatchPicker from "@/components/ColorSwatchPicker";
 
 export default function NewTaskModal({ projectId, columnId, columnName, assignableUsers, onClose, onCreated }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState([]);
   const [dueDate, setDueDate] = useState("");
+  const [color, setColor] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e) {
@@ -27,6 +29,7 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
         description,
         assigneeIds,
         dueDate: dueDate || null,
+        color,
       }),
     });
     setSubmitting(false);
@@ -41,7 +44,7 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
           New task
           {columnName && (
             <Typography variant="body2" color="text.secondary" fontWeight={400} sx={{ mt: 0.25 }}>
-              In column “{columnName}»
+              In column "{columnName}"
             </Typography>
           )}
         </DialogTitle>
@@ -103,6 +106,11 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
               />
             </Grid>
           </Grid>
+
+          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mt: 2.5, mb: 1 }}>
+            COLOR (OPTIONAL)
+          </Typography>
+          <ColorSwatchPicker value={color} onChange={setColor} />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={onClose} color="inherit">

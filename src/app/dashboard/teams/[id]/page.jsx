@@ -3,22 +3,28 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Box, Typography, Button, Stack, Chip, Avatar, TextField, Alert, CircularProgress, IconButton,
+  Box, Typography, Button, Stack, Chip, Avatar, TextField, Alert, CircularProgress,
 } from "@mui/material";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import CloseIcon from "@mui/icons-material/Close";
+import ScheduleSendIcon from "@mui/icons-material/ScheduleSend";
 import { useSession } from "next-auth/react";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { useThemeMode } from "@/components/ThemeModeContext";
+import { pastelForString } from "@/lib/pastelColor";
 
 export default function TeamDetailPage() {
   const { id } = useParams();
   const { data: session } = useSession();
+  const { mode } = useThemeMode();
   const [team, setTeam] = useState(null);
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [cancelingInviteId, setCancelingInviteId] = useState(null);
 
   async function load() {
     const res = await fetch(`/api/teams/${id}`);
@@ -36,17 +42,23 @@ export default function TeamDetailPage() {
     e.preventDefault();
     setInviting(true);
     setError("");
+    setSuccess("");
     const res = await fetch(`/api/teams/${id}/members`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
+    const data = await res.json();
     setInviting(false);
     if (!res.ok) {
-      const data = await res.json();
       setError(data.error);
       return;
     }
+    setSuccess(
+      data.status === "invited"
+        ? `${email} doesn't have an account yet — an invitation email was sent. They'll join automatically once they sign up.`
+        : `${email} was added to the team.`
+    );
     setEmail("");
     load();
   }
@@ -57,6 +69,13 @@ export default function TeamDetailPage() {
     await fetch(`/api/teams/${id}/members?userId=${confirmRemove.id}`, { method: "DELETE" });
     setRemoving(false);
     setConfirmRemove(null);
+    load();
+  }
+
+  async function cancelInvitation(invitationId) {
+    setCancelingInviteId(invitationId);
+    await fetch(`/api/teams/${id}/invitations/${invitationId}`, { method: "DELETE" });
+    setCancelingInviteId(null);
     load();
   }
 
@@ -101,19 +120,24 @@ export default function TeamDetailPage() {
         </Box>
       )}
       {error && (
-        <Alert severity="error" sx={{ mb: 3, maxWidth: 400 }}>
+        <Alert severity="error" sx={{ mb: 3, maxWidth: 480 }}>
           {error}
+        </Alert>
+      )}
+      {success && (
+        <Alert severity="success" sx={{ mb: 3, maxWidth: 480 }} onClose={() => setSuccess("")}>
+          {success}
         </Alert>
       )}
 
       <Typography variant="h6" fontWeight={700} gutterBottom>
         Team members
       </Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: isManager && team.pendingInvitations?.length > 0 ? 4 : 0 }}>
         {team.members.map((m) => (
           <Chip
             key={m.id}
-            avatar={<Avatar sx={{ fontSize: 12 }}>{m.name.slice(0, 1)}</Avatar>}
+            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>{m.name.slice(0, 1)}</Avatar>}
             label={m.id === team.manager.id ? `${m.name} · Manager` : m.name}
             variant="outlined"
             color={m.id === team.manager.id ? "primary" : "default"}
@@ -122,6 +146,29 @@ export default function TeamDetailPage() {
           />
         ))}
       </Stack>
+
+      {isManager && team.pendingInvitations?.length > 0 && (
+        <Box>
+          <Typography variant="h6" fontWeight={700} gutterBottom>
+            Pending invitations
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+            These people have been invited by email but haven't created an account yet.
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {team.pendingInvitations.map((inv) => (
+              <Chip
+                key={inv.id}
+                icon={<ScheduleSendIcon sx={{ fontSize: 16 }} />}
+                label={inv.email}
+                variant="outlined"
+                onDelete={() => cancelInvitation(inv.id)}
+                deleteIcon={cancelingInviteId === inv.id ? <CircularProgress size={14} /> : <CloseIcon />}
+              />
+            ))}
+          </Stack>
+        </Box>
+      )}
 
       <ConfirmDialog
         open={!!confirmRemove}
