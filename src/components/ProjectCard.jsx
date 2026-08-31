@@ -23,7 +23,7 @@ export default function ProjectCard({ project }) {
             <Chip
               label={project.team.name}
               size="small"
-              sx={{ bgcolor: pastelForString(project.team.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}
+              sx={{ bgcolor: pastelForString(project.team.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}
             />
           </Box>
           {project.description && (

@@ -1,57 +1,64 @@
 import { createTheme, responsiveFontSizes } from "@mui/material/styles";
 
-// Design direction: warm and editorial rather than another blue/indigo SaaS
-// template — a single terracotta accent used for primary actions/signal,
-// pastel color built in for task labels and per-person/per-team variety,
-// and a serif face for headings. Light mode stays soft and pastel; dark
-// mode reuses the same hues but shifted deep and muted instead of bright.
+// Design direction: pastel and genuinely colorful rather than a single
+// muted accent — a soft violet-to-rose gradient carries the primary
+// actions, pastel hues show up throughout (avatars, team badges, task
+// labels), and a serif display face keeps headings feeling considered.
+// Light mode stays airy and pastel; dark mode reuses the same hues
+// shifted deep and muted instead of glowing.
 
-const ACCENT = "#B54A2C"; // terracotta — deliberately not blue/indigo/violet
+export const INK_TOKENS = {
+  light: "#221F2E",
+  dark: "#F1EEFB",
+};
 
 const LIGHT = {
-  ink: "#1C1B19",
-  subtle: "#78716C",
-  border: "#E7E2D9",
-  canvas: "#FBF9F5",
+  ink: "#221F2E",
+  subtle: "#786F94",
+  border: "#E4DEF5",
+  canvas: "#F9F7FE",
   paper: "#FFFFFF",
-  accentTint: "rgba(181,74,44,0.06)",
-  accentBorderLight: "#E8B8A3",
-  progressTrack: "#F1E4DD",
-  grey: { 50: "#F3F0E9", 100: "#EDE9E0", 200: "#E7E2D9", 300: "#D6D0C4", 400: "#A8A29E", 500: "#78716C" },
+  accentTint: "rgba(139,127,217,0.08)",
+  accentBorderLight: "#C9BFF0",
+  progressTrack: "#EDE8FA",
+  gradient: "linear-gradient(135deg, #8B7FD9 0%, #E29FC4 100%)",
+  grey: { 50: "#F5F2FC", 100: "#EFEAF9", 200: "#E4DEF5", 300: "#D3C9EC", 400: "#A79BC9", 500: "#786F94" },
 };
 
 const DARK = {
-  ink: "#F2EFEA",
-  subtle: "#A79E93",
-  border: "#3A362F",
-  canvas: "#1A1815",
-  paper: "#242220",
-  accentTint: "rgba(224,131,98,0.12)",
-  accentBorderLight: "#8F4A32",
-  progressTrack: "#3A2C24",
-  grey: { 50: "#2A2723", 100: "#332F29", 200: "#3A362F", 300: "#4C463D", 400: "#786F63", 500: "#A79E93" },
+  ink: "#F1EEFB",
+  subtle: "#B3A8D9",
+  border: "#3A3450",
+  canvas: "#1B1830",
+  paper: "#24203D",
+  accentTint: "rgba(179,164,240,0.14)",
+  accentBorderLight: "#6C5FA8",
+  progressTrack: "#332C55",
+  gradient: "linear-gradient(135deg, #7C6BD1 0%, #C77FAE 100%)",
+  grey: { 50: "#241F3D", 100: "#2B254A", 200: "#3A3450", 300: "#4A4266", 400: "#7C71A8", 500: "#B3A8D9" },
 };
 
 export function buildTheme(mode) {
   const t = mode === "dark" ? DARK : LIGHT;
-  const accentMain = mode === "dark" ? "#D97A54" : ACCENT; // lighter terracotta reads better on dark backgrounds
+  const accentMain = mode === "dark" ? "#B3A4F0" : "#8B7FD9";
+  const secondaryMain = mode === "dark" ? "#E8A8CC" : "#D9679F";
 
   const theme = createTheme({
     direction: "ltr",
     palette: {
       mode,
-      primary: { main: accentMain, dark: mode === "dark" ? "#B5633F" : "#8F3B22", light: mode === "dark" ? "#E8A184" : "#C97A5C" },
-      secondary: { main: mode === "dark" ? "#7FA98A" : "#4D6B4D" },
-      success: { main: mode === "dark" ? "#7FA98A" : "#4D6B4D" },
-      warning: { main: mode === "dark" ? "#D6A94E" : "#A16207" },
-      error: { main: mode === "dark" ? "#D9776A" : "#A3402C" },
+      primary: { main: accentMain, dark: mode === "dark" ? "#8F7FD1" : "#6A5CB8", light: mode === "dark" ? "#CFC3F5" : "#B0A5E8" },
+      secondary: { main: secondaryMain },
+      success: { main: mode === "dark" ? "#8FE0AE" : "#4FAF77" },
+      warning: { main: mode === "dark" ? "#F0D28C" : "#C98A1F" },
+      error: { main: mode === "dark" ? "#F0A199" : "#D1594B" },
       text: { primary: t.ink, secondary: t.subtle },
       divider: t.border,
       background: { default: t.canvas, paper: t.paper },
       grey: t.grey,
     },
     typography: {
-      fontFamily: "Inter, Roboto, Arial, sans-serif",
+      fontFamily: "'Plus Jakarta Sans', Roboto, Arial, sans-serif",
       h3: { fontFamily: "'Fraunces', serif", fontWeight: 600 },
       h4: { fontFamily: "'Fraunces', serif", fontWeight: 600 },
       h5: { fontFamily: "'Fraunces', serif", fontWeight: 600 },
@@ -60,17 +67,29 @@ export function buildTheme(mode) {
       overline: { letterSpacing: "0.06em", fontWeight: 700 },
       button: { fontWeight: 600, textTransform: "none" },
     },
-    shape: { borderRadius: 8 },
+    shape: { borderRadius: 10 },
     components: {
       MuiButton: {
         defaultProps: { disableElevation: true },
         styleOverrides: {
-          root: { fontWeight: 600, paddingInline: 16, borderRadius: 6 },
+          root: { fontWeight: 600, paddingInline: 18, borderRadius: 8 },
           outlined: { borderColor: t.border, "&:hover": { borderColor: accentMain, backgroundColor: t.accentTint } },
           containedPrimary: {
-            boxShadow: "none",
-            "&:hover": { boxShadow: "0 1px 2px rgba(0,0,0,0.08)" },
+            backgroundImage: t.gradient,
+            color: "#FFFFFF",
+            boxShadow: mode === "dark" ? "0 4px 16px rgba(124,107,209,0.35)" : "0 4px 14px rgba(139,127,217,0.3)",
+            "&:hover": {
+              backgroundImage: t.gradient,
+              filter: "brightness(1.06)",
+              boxShadow: mode === "dark" ? "0 6px 20px rgba(124,107,209,0.45)" : "0 6px 20px rgba(139,127,217,0.4)",
+            },
+            "&.Mui-disabled": { backgroundImage: "none" },
           },
+        },
+      },
+      MuiFab: {
+        styleOverrides: {
+          primary: { backgroundImage: t.gradient, "&:hover": { backgroundImage: t.gradient, filter: "brightness(1.06)" } },
         },
       },
       MuiAppBar: {
@@ -78,7 +97,7 @@ export function buildTheme(mode) {
           root: {
             boxShadow: "none",
             borderBottom: `1px solid ${t.border}`,
-            backgroundColor: mode === "dark" ? "rgba(26,24,21,0.9)" : "rgba(251,249,245,0.9)",
+            backgroundColor: mode === "dark" ? "rgba(27,24,48,0.9)" : "rgba(249,247,254,0.9)",
             backdropFilter: "blur(8px)",
           },
         },
@@ -102,19 +121,19 @@ export function buildTheme(mode) {
         styleOverrides: {
           root: {
             "&:hover": { backgroundColor: "transparent" },
-            "&:hover .MuiCard-root": { borderColor: t.accentBorderLight, boxShadow: mode === "dark" ? "0 4px 14px rgba(0,0,0,0.35)" : "0 4px 14px rgba(28,27,25,0.06)" },
+            "&:hover .MuiCard-root": { borderColor: t.accentBorderLight, boxShadow: mode === "dark" ? "0 4px 14px rgba(0,0,0,0.35)" : "0 4px 14px rgba(139,127,217,0.15)" },
           },
         },
       },
       MuiChip: {
         styleOverrides: {
-          root: { fontWeight: 600, borderRadius: 5 },
+          root: { fontWeight: 600, borderRadius: 6 },
           outlined: { borderColor: t.border },
         },
       },
       MuiDialog: {
         styleOverrides: {
-          paper: { borderRadius: 12, boxShadow: mode === "dark" ? "0 20px 60px rgba(0,0,0,0.5)" : "0 20px 60px rgba(28,27,25,0.18)" },
+          paper: { borderRadius: 14, boxShadow: mode === "dark" ? "0 20px 60px rgba(0,0,0,0.5)" : "0 20px 60px rgba(139,127,217,0.22)" },
         },
       },
       MuiDialogTitle: {
@@ -126,7 +145,7 @@ export function buildTheme(mode) {
       MuiOutlinedInput: {
         styleOverrides: {
           root: {
-            borderRadius: 6,
+            borderRadius: 8,
             "& fieldset": { borderColor: t.border },
             "&:hover fieldset": { borderColor: t.accentBorderLight },
           },
@@ -145,5 +164,3 @@ export function buildTheme(mode) {
 
   return responsiveFontSizes(theme);
 }
-
-export { ACCENT };

@@ -36,6 +36,15 @@ export function ThemeModeProvider({ children }) {
   }, []);
 
   const toggleMode = () => {
+    // Briefly flags <html> so the CSS in globals.css can transition colors
+    // smoothly across the whole page during the switch, then removes the
+    // flag so it doesn't slow down normal hover/interaction transitions.
+    document.documentElement.classList.add("theme-transitioning");
+    window.clearTimeout(window.__themeTransitionTimeout);
+    window.__themeTransitionTimeout = window.setTimeout(() => {
+      document.documentElement.classList.remove("theme-transitioning");
+    }, 500);
+
     setMode((prev) => {
       const next = prev === "dark" ? "light" : "dark";
       localStorage.setItem(STORAGE_KEY, next);

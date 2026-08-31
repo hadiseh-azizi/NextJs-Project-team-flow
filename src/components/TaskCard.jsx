@@ -26,7 +26,7 @@ export default function TaskCard({ task, onDragStart, onDragOverCard, onDelete, 
           bgcolor: cardColor || "background.paper",
           "&:active": { cursor: "grabbing" },
           "&:hover .task-delete-btn": { opacity: 1 },
-          "&:hover": { borderColor: "#E8B8A3", boxShadow: "0 2px 10px rgba(28,27,25,0.06)" },
+          "&:hover": { borderColor: "#C9BFF0", boxShadow: "0 2px 10px rgba(139,127,217,0.15)" },
         }}
       >
         <CardContent sx={{ p: "12px !important" }}>
@@ -72,7 +72,7 @@ export default function TaskCard({ task, onDragStart, onDragOverCard, onDelete, 
             {task.assignees.length > 0 && (
               <AvatarGroup max={4} sx={{ "& .MuiAvatar-root": { width: 22, height: 22, fontSize: 11, borderColor: cardColor || "background.paper" } }}>
                 {task.assignees.map((a) => (
-                  <Avatar key={a.id} sx={{ bgcolor: pastelForString(a.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>
+                  <Avatar key={a.id} sx={{ bgcolor: pastelForString(a.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
                     {a.name.slice(0, 1)}
                   </Avatar>
                 ))}

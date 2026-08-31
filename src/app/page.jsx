@@ -95,7 +95,7 @@ export default function Home() {
             <Chip
               label="Built for small teams"
               size="small"
-              sx={{ bgcolor: "rgba(181,74,44,0.08)", color: "primary.main", mb: 2.5, fontWeight: 700 }}
+              sx={{ bgcolor: "rgba(139,127,217,0.1)", color: "primary.main", mb: 2.5, fontWeight: 700 }}
             />
             <Typography
               variant="h3"

@@ -5,12 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
-  Box, Typography, Button, Stack, Chip, CircularProgress,
+  Box, Typography, Button, Stack, Chip, Skeleton, Grid,
 } from "@mui/material";
 import GroupsIcon from "@mui/icons-material/Groups";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import KanbanBoard from "@/components/KanbanBoard";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { staggerDelay } from "@/components/FadeInStagger";
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -39,8 +40,17 @@ export default function ProjectDetailPage() {
 
   if (!project) {
     return (
-      <Box display="flex" justifyContent="center" py={8}>
-        <CircularProgress />
+      <Box>
+        <Skeleton variant="text" width={80} height={20} />
+        <Skeleton variant="text" width="45%" height={48} sx={{ mb: 1 }} />
+        <Skeleton variant="text" width="65%" height={24} sx={{ mb: 3 }} />
+        <Grid container spacing={2}>
+          {[0, 1, 2].map((i) => (
+            <Grid item xs={12} md={4} key={i}>
+              <Skeleton variant="rounded" height={340} sx={{ borderRadius: 3 }} />
+            </Grid>
+          ))}
+        </Grid>
       </Box>
     );
   }
@@ -98,9 +108,21 @@ export default function ProjectDetailPage() {
       </Box>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
-        <Chip label={`Project manager: ${project.manager.name}`} size="small" color="primary" variant="outlined" />
-        {project.team.members.map((m) => (
-          <Chip key={m.id} label={m.name} size="small" variant="outlined" />
+        <Chip
+          label={`Project manager: ${project.manager.name}`}
+          size="small"
+          color="primary"
+          variant="outlined"
+          sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both" }}
+        />
+        {project.team.members.map((m, i) => (
+          <Chip
+            key={m.id}
+            label={m.name}
+            size="small"
+            variant="outlined"
+            sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both", animationDelay: `${staggerDelay(i + 1, { base: 100 })}ms` }}
+          />
         ))}
       </Stack>
 

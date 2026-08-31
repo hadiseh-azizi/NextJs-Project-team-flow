@@ -10,6 +10,7 @@ import ProgressChart from "@/components/ProgressChart";
 import OverviewStats from "@/components/OverviewStats";
 import Link from "next/link";
 import { Box, Card, CardContent, Typography, Button, Stack } from "@mui/material";
+import FadeInStagger from "@/components/FadeInStagger";
 
 const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
 
@@ -54,16 +55,20 @@ export default async function DashboardPage() {
       {/* Each stat below is a button — clicking it opens the matching list
           right underneath (active projects / completed tasks / your open
           tasks) instead of being purely decorative. */}
-      <OverviewStats projects={serialized} userId={userId} />
+      <FadeInStagger index={0} base={150}>
+        <OverviewStats projects={serialized} userId={userId} />
+      </FadeInStagger>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            Project progress
-          </Typography>
-          <ProgressChart projects={serialized} />
-        </CardContent>
-      </Card>
+      <FadeInStagger index={1} base={150}>
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              Project progress
+            </Typography>
+            <ProgressChart projects={serialized} />
+          </CardContent>
+        </Card>
+      </FadeInStagger>
 
       {serialized.length === 0 && (
         <Stack alignItems="center" spacing={1} sx={{ mt: 6 }}>

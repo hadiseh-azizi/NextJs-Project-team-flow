@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Box, Paper, Typography, IconButton, TextField, Menu, MenuItem, Tooltip, Alert, Snackbar,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -12,6 +13,7 @@ import TaskCard from "@/components/TaskCard";
 import TaskDetailDialog from "@/components/TaskDetailDialog";
 import NewTaskModal from "@/components/NewTaskModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import FadeInStagger from "@/components/FadeInStagger";
 
 export default function KanbanBoard({ projectId, columns, tasks, onChanged, assignableUsers }) {
   const [dragOverCol, setDragOverCol] = useState(null);
@@ -170,26 +172,25 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           "&::-webkit-scrollbar-thumb": { bgcolor: "grey.300", borderRadius: 3 },
         }}
       >
-        {sortedColumns.map((column) => {
+        {sortedColumns.map((column, columnIndex) => {
           const colTasks = tasks.filter((t) => t.columnId === column.id).sort((a, b) => a.order - b.order);
           const isOver = dragOverCol === column.id;
           const colDropTarget = dropTarget && dropTarget.columnId === column.id ? dropTarget : null;
           return (
+            <FadeInStagger key={column.id} index={columnIndex} base={200} sx={{ flex: { xs: "0 0 82%", sm: "0 0 300px", md: "0 0 300px" } }}>
             <Paper
-              key={column.id}
               variant="outlined"
               onDragOver={(e) => handleColumnDragOver(e, column.id)}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, column.id)}
-              sx={{
+              sx={(theme) => ({
                 p: 1.5,
                 minHeight: 340,
-                flex: { xs: "0 0 82%", sm: "0 0 300px", md: "0 0 300px" },
-                bgcolor: isOver ? "rgba(181,74,44,0.04)" : "grey.50",
+                bgcolor: isOver ? alpha(theme.palette.primary.main, 0.06) : "grey.50",
                 borderColor: isOver ? "primary.main" : "divider",
                 borderWidth: isOver ? 2 : 1,
                 transition: "background-color .15s, border-color .15s",
-              }}
+              })}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5, px: 0.5, pt: 0.5 }}>
                 {column.isDoneColumn && (
@@ -236,16 +237,17 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               </Box>
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                {colTasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    onDragStart={handleDragStart}
-                    onDragOverCard={(e, t) => handleCardDragOver(e, column.id, t)}
-                    onDelete={setConfirmDeleteTask}
-                    onOpen={(t) => setOpenTaskId(t.id)}
-                    dropIndicator={colDropTarget?.taskId === task.id ? colDropTarget.position : null}
-                  />
+                {colTasks.map((task, taskIndex) => (
+                  <FadeInStagger key={task.id} index={taskIndex} base={140} duration={0.4}>
+                    <TaskCard
+                      task={task}
+                      onDragStart={handleDragStart}
+                      onDragOverCard={(e, t) => handleCardDragOver(e, column.id, t)}
+                      onDelete={setConfirmDeleteTask}
+                      onOpen={(t) => setOpenTaskId(t.id)}
+                      dropIndicator={colDropTarget?.taskId === task.id ? colDropTarget.position : null}
+                    />
+                  </FadeInStagger>
                 ))}
                 {colTasks.length === 0 && (
                   <Box sx={{ border: "1.5px dashed", borderColor: "grey.300", borderRadius: 2, py: 3, textAlign: "center" }}>
@@ -273,6 +275,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 </Typography>
               </Box>
             </Paper>
+            </FadeInStagger>
           );
         })}
 
@@ -313,11 +316,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           ) : (
             <Box
               onClick={() => setAddingColumn(true)}
-              sx={{
+              sx={(theme) => ({
                 display: "flex", alignItems: "center", gap: 0.75, p: 1.5, borderRadius: 2,
                 border: "1.5px dashed", borderColor: "grey.300", cursor: "pointer", color: "text.secondary",
-                "&:hover": { borderColor: "primary.main", color: "primary.main", bgcolor: "rgba(181,74,44,0.03)" },
-              }}
+                "&:hover": { borderColor: "primary.main", color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.05) },
+              })}
             >
               <AddIcon fontSize="small" />
               <Typography variant="body2" fontWeight={600}>

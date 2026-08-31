@@ -6,10 +6,11 @@ import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Box, Typography, Button, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert,
+  TextField, MenuItem, CircularProgress, Alert, Skeleton,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import ProjectCard from "@/components/ProjectCard";
+import FadeInStagger from "@/components/FadeInStagger";
 
 function ProjectsPageInner() {
   const { data: session } = useSession();
@@ -149,18 +150,24 @@ function ProjectsPageInner() {
       </Dialog>
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress />
-        </Box>
+        <Grid container spacing={2}>
+          {[0, 1, 2].map((i) => (
+            <Grid item xs={12} md={6} lg={4} key={i}>
+              <Skeleton variant="rounded" height={148} sx={{ borderRadius: 3 }} />
+            </Grid>
+          ))}
+        </Grid>
       ) : projects.length === 0 ? (
         <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
           <Typography color="text.secondary">You haven't created any projects yet.</Typography>
         </Box>
       ) : (
         <Grid container spacing={2}>
-          {projects.map((p) => (
+          {projects.map((p, i) => (
             <Grid item xs={12} md={6} lg={4} key={p.id}>
-              <ProjectCard project={p} />
+              <FadeInStagger index={i}>
+                <ProjectCard project={p} />
+              </FadeInStagger>
             </Grid>
           ))}
         </Grid>

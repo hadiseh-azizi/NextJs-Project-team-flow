@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import {
   Box, Typography, Button, Grid, Card, CardActionArea, CardContent, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, CircularProgress, AvatarGroup, Avatar,
-  Checkbox, FormControlLabel, Collapse, Divider,
+  Checkbox, FormControlLabel, Collapse, Divider, Skeleton,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
+import FadeInStagger from "@/components/FadeInStagger";
 
 export default function TeamsPage() {
   const router = useRouter();
@@ -147,38 +148,44 @@ export default function TeamsPage() {
       </Dialog>
 
       {loading ? (
-        <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress />
-        </Box>
+        <Grid container spacing={2}>
+          {[0, 1, 2].map((i) => (
+            <Grid item xs={12} md={6} lg={4} key={i}>
+              <Skeleton variant="rounded" height={128} sx={{ borderRadius: 3 }} />
+            </Grid>
+          ))}
+        </Grid>
       ) : teams.length === 0 ? (
         <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
           <Typography color="text.secondary">You're not a member of any team yet.</Typography>
         </Box>
       ) : (
         <Grid container spacing={2}>
-          {teams.map((t) => (
+          {teams.map((t, i) => (
             <Grid item xs={12} md={6} lg={4} key={t.id}>
-              <Card variant="outlined">
-                <CardActionArea component={Link} href={`/dashboard/teams/${t.id}`}>
-                  <CardContent>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                      <Typography variant="h6" fontWeight={700}>
-                        {t.name}
+              <FadeInStagger index={i}>
+                <Card variant="outlined">
+                  <CardActionArea component={Link} href={`/dashboard/teams/${t.id}`}>
+                    <CardContent>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                        <Typography variant="h6" fontWeight={700}>
+                          {t.name}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                        Manager: {t.manager?.name}
                       </Typography>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                      Manager: {t.manager?.name}
-                    </Typography>
-                    <AvatarGroup max={5} sx={{ justifyContent: "flex-end" }}>
-                      {t.members.map((m) => (
-                        <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>
-                          {m.name.slice(0, 1)}
-                        </Avatar>
-                      ))}
-                    </AvatarGroup>
-                  </CardContent>
-                </CardActionArea>
-              </Card>
+                      <AvatarGroup max={5} sx={{ justifyContent: "flex-end" }}>
+                        {t.members.map((m) => (
+                          <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
+                            {m.name.slice(0, 1)}
+                          </Avatar>
+                        ))}
+                      </AvatarGroup>
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              </FadeInStagger>
             </Grid>
           ))}
         </Grid>

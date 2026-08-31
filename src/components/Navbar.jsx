@@ -3,20 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { AppBar, Toolbar, Typography, Button, Stack, Box, Avatar, IconButton, Tooltip } from "@mui/material";
+import { AppBar, Toolbar, Typography, Button, Stack, Box, Avatar } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
 import GroupsIcon from "@mui/icons-material/Groups";
 import LogoutIcon from "@mui/icons-material/Logout";
-import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
-import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import { useThemeMode } from "@/components/ThemeModeContext";
+import ThemeToggleButton from "@/components/ThemeToggleButton";
 import { pastelForString } from "@/lib/pastelColor";
 
 export default function Navbar({ userName }) {
   const pathname = usePathname();
-  const { mode, toggleMode } = useThemeMode();
+  const { mode } = useThemeMode();
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
@@ -73,11 +72,7 @@ export default function Navbar({ userName }) {
         </Stack>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.25, sm: 1 }, flexShrink: 0 }}>
-          <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-            <IconButton onClick={toggleMode} size="small" sx={{ color: "text.secondary" }}>
-              {mode === "dark" ? <LightModeOutlinedIcon sx={{ fontSize: 19 }} /> : <DarkModeOutlinedIcon sx={{ fontSize: 19 }} />}
-            </IconButton>
-          </Tooltip>
+          <ThemeToggleButton />
 
           <Stack
             direction="row"
@@ -85,7 +80,7 @@ export default function Navbar({ userName }) {
             alignItems="center"
             sx={{ pl: 0.5, pr: { xs: 0, sm: 1 }, borderRight: { xs: "none", sm: "1px solid" }, borderColor: "divider" }}
           >
-            <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>
+            <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
               {userName.slice(0, 1)}
             </Avatar>
             <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>

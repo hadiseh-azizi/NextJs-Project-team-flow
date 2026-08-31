@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 html,
 body {
@@ -8,4 +8,44 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Applied to <html> for ~500ms right when the dark/light toggle is
+   clicked, so every surface's color crossfades smoothly instead of
+   flipping instantly. Removed right after, so it never slows down
+   ordinary hover/interaction transitions defined elsewhere. */
+.theme-transitioning,
+.theme-transitioning * {
+  transition:
+    background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
+    fill 0.45s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Used by <FadeInStagger> — content starts slightly lower, blurred, and
+   transparent (like a Telegram sticker still resolving) and settles into
+   place. Combined with a per-item animation-delay, a list appears to
+   reveal itself item by item instead of popping in all at once. */
+@keyframes ff-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes ff-shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
 }

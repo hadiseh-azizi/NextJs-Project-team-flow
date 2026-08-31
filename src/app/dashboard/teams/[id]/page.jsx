@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Box, Typography, Button, Stack, Chip, Avatar, TextField, Alert, CircularProgress,
+  Box, Typography, Button, Stack, Chip, Avatar, TextField, Alert, CircularProgress, Skeleton,
 } from "@mui/material";
 import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import CloseIcon from "@mui/icons-material/Close";
@@ -12,6 +12,7 @@ import { useSession } from "next-auth/react";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
+import { staggerDelay } from "@/components/FadeInStagger";
 
 export default function TeamDetailPage() {
   const { id } = useParams();
@@ -81,8 +82,15 @@ export default function TeamDetailPage() {
 
   if (!team) {
     return (
-      <Box display="flex" justifyContent="center" py={8}>
-        <CircularProgress />
+      <Box>
+        <Skeleton variant="text" width={60} height={20} />
+        <Skeleton variant="text" width="35%" height={48} sx={{ mb: 1 }} />
+        <Skeleton variant="text" width="25%" height={24} sx={{ mb: 3 }} />
+        <Stack direction="row" spacing={1}>
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} variant="rounded" width={100} height={32} sx={{ borderRadius: 5 }} />
+          ))}
+        </Stack>
       </Box>
     );
   }
@@ -134,15 +142,16 @@ export default function TeamDetailPage() {
         Team members
       </Typography>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: isManager && team.pendingInvitations?.length > 0 ? 4 : 0 }}>
-        {team.members.map((m) => (
+        {team.members.map((m, i) => (
           <Chip
             key={m.id}
-            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFEA" : "#1C1B19" }}>{m.name.slice(0, 1)}</Avatar>}
+            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>{m.name.slice(0, 1)}</Avatar>}
             label={m.id === team.manager.id ? `${m.name} · Manager` : m.name}
             variant="outlined"
             color={m.id === team.manager.id ? "primary" : "default"}
             onDelete={isManager && m.id !== team.manager.id ? () => setConfirmRemove(m) : undefined}
             deleteIcon={<CloseIcon />}
+            sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both", animationDelay: `${staggerDelay(i, { base: 100 })}ms` }}
           />
         ))}
       </Stack>
@@ -156,7 +165,7 @@ export default function TeamDetailPage() {
             These people have been invited by email but haven't created an account yet.
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {team.pendingInvitations.map((inv) => (
+            {team.pendingInvitations.map((inv, i) => (
               <Chip
                 key={inv.id}
                 icon={<ScheduleSendIcon sx={{ fontSize: 16 }} />}
@@ -164,6 +173,7 @@ export default function TeamDetailPage() {
                 variant="outlined"
                 onDelete={() => cancelInvitation(inv.id)}
                 deleteIcon={cancelingInviteId === inv.id ? <CircularProgress size={14} /> : <CloseIcon />}
+                sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both", animationDelay: `${staggerDelay(i, { base: 100 })}ms` }}
               />
             ))}
           </Stack>
