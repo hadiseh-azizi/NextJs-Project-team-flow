@@ -11,26 +11,45 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import ProjectCard from "@/components/ProjectCard";
 import FadeInStagger from "@/components/FadeInStagger";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
 function ProjectsPageInner() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const isMounted = useIsMounted();
+  const nextRequest = useLatestRequest();
   const [projects, setProjects] = useState([]);
   const [myTeams, setMyTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [teamId, setTeamId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
 
   async function load() {
+    const isCurrent = nextRequest();
     setLoading(true);
-    const [projectsRes, teamsRes] = await Promise.all([fetch("/api/projects"), fetch("/api/teams")]);
-    setProjects(await projectsRes.json());
-    setMyTeams(await teamsRes.json());
-    setLoading(false);
+    setLoadError("");
+    try {
+      const [projectsData, teamsData] = await Promise.all([apiFetch("/api/projects"), apiFetch("/api/teams")]);
+      if (!isMounted() || !isCurrent()) return;
+      setProjects(projectsData);
+      setMyTeams(teamsData);
+    } catch (err) {
+      if (!isMounted() || !isCurrent()) return;
+      if (err.status === 401) {
+        router.push("/login");
+        return;
+      }
+      setLoadError(errorMessage(err, "Couldn't load your projects. Please try again."));
+    } finally {
+      if (isMounted() && isCurrent()) setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -54,18 +73,26 @@ function ProjectsPageInner() {
 
   async function handleCreate(e) {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
-    await fetch("/api/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, teamId }),
-    });
-    setSubmitting(false);
-    setShowForm(false);
-    setName("");
-    setDescription("");
-    setTeamId("");
-    load();
+    setFormError("");
+    try {
+      await apiFetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description, teamId }),
+      });
+      if (!isMounted()) return;
+      setShowForm(false);
+      setName("");
+      setDescription("");
+      setTeamId("");
+      load();
+    } catch (err) {
+      if (isMounted()) setFormError(errorMessage(err, "Couldn't create the project. Please try again."));
+    } finally {
+      if (isMounted()) setSubmitting(false);
+    }
   }
 
   return (
@@ -133,6 +160,11 @@ function ProjectsPageInner() {
                     </MenuItem>
                   ))}
                 </TextField>
+                {formError && (
+                  <Alert severity="error" sx={{ mt: 2 }}>
+                    {formError}
+                  </Alert>
+                )}
               </>
             )}
           </DialogContent>
@@ -157,6 +189,10 @@ function ProjectsPageInner() {
             </Grid>
           ))}
         </Grid>
+      ) : loadError ? (
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
+          {loadError}
+        </Alert>
       ) : projects.length === 0 ? (
         <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
           <Typography color="text.secondary">You haven't created any projects yet.</Typography>

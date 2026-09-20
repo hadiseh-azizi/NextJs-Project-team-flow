@@ -5,9 +5,12 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Box, Paper, Typography, TextField, Button, Alert } from "@mui/material";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted } from "@/lib/clientAsync";
 
 export default function LoginPage() {
   const router = useRouter();
+  const isMounted = useIsMounted();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -18,34 +21,48 @@ export default function LoginPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading) return;
     setError("");
     setNeedsVerification(false);
     setResent(false);
     setLoading(true);
 
-    const res = await signIn("credentials", { email, password, redirect: false });
-
-    setLoading(false);
-    if (res?.error) {
-      if (res.error === "EmailNotVerified") {
-        setNeedsVerification(true);
-      } else {
-        setError("Incorrect email or password");
+    try {
+      const res = await signIn("credentials", { email, password, redirect: false });
+      if (!isMounted()) return;
+      if (res?.error) {
+        if (res.error === "EmailNotVerified") {
+          setNeedsVerification(true);
+        } else if (res.error === "TooManyAttempts") {
+          setError("Too many sign-in attempts. Please wait a few minutes and try again.");
+        } else {
+          setError("Incorrect email or password");
+        }
+        return;
       }
-      return;
+      router.push("/dashboard");
+    } catch {
+      if (isMounted()) setError("Something went wrong. Please try again.");
+    } finally {
+      if (isMounted()) setLoading(false);
     }
-    router.push("/dashboard");
   }
 
   async function handleResend() {
+    if (resending) return;
     setResending(true);
-    await fetch("/api/auth/resend-verification", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    setResending(false);
-    setResent(true);
+    try {
+      await apiFetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (isMounted()) setResent(true);
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't resend the verification email. Please try again."));
+    } finally {
+      if (isMounted()) setResending(false);
+    }
   }
 
   return (

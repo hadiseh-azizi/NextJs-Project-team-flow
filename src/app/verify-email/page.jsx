@@ -1,16 +1,25 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Box, Paper, Typography, Button, CircularProgress, Alert } from "@mui/material";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted } from "@/lib/clientAsync";
 
 function VerifyEmailInner() {
   const searchParams = useSearchParams();
+  const isMounted = useIsMounted();
   const [status, setStatus] = useState("verifying"); // verifying | success | error
   const [error, setError] = useState("");
+  // The verification token is single-use (see tokenVersion), so this must
+  // fire at most once per token even if the effect re-runs (e.g. React
+  // Strict Mode's dev double-invoke, or a parent re-render) — a second
+  // call would hit an already-consumed token and misreport a real success
+  // as a failure.
+  const attemptedToken = useRef(null);
 
   useEffect(() => {
     const token = searchParams.get("token");
@@ -19,24 +28,21 @@ function VerifyEmailInner() {
       setError("Missing verification token.");
       return;
     }
+    if (attemptedToken.current === token) return;
+    attemptedToken.current = token;
 
-    fetch("/api/auth/verify-email", {
+    apiFetch("/api/auth/verify-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token }),
     })
-      .then(async (res) => {
-        const data = await res.json();
-        if (!res.ok) {
-          setStatus("error");
-          setError(data.error || "Verification failed.");
-          return;
-        }
-        setStatus("success");
+      .then(() => {
+        if (isMounted()) setStatus("success");
       })
-      .catch(() => {
+      .catch((err) => {
+        if (!isMounted()) return;
         setStatus("error");
-        setError("Something went wrong. Please try again.");
+        setError(errorMessage(err, "Verification failed."));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);

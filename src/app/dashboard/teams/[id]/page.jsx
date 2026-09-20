@@ -9,27 +9,47 @@ import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import CloseIcon from "@mui/icons-material/Close";
 import ScheduleSendIcon from "@mui/icons-material/ScheduleSend";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
-import { staggerDelay } from "@/components/FadeInStagger";
+import { avatarInitial } from "@/lib/avatarInitial";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
 export default function TeamDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const { data: session } = useSession();
   const { mode } = useThemeMode();
+  const isMounted = useIsMounted();
+  const nextRequest = useLatestRequest();
   const [team, setTeam] = useState(null);
+  const [loadError, setLoadError] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [inviting, setInviting] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [removeError, setRemoveError] = useState("");
   const [removing, setRemoving] = useState(false);
   const [cancelingInviteId, setCancelingInviteId] = useState(null);
 
   async function load() {
-    const res = await fetch(`/api/teams/${id}`);
-    if (res.ok) setTeam(await res.json());
+    const isCurrent = nextRequest();
+    try {
+      const data = await apiFetch(`/api/teams/${id}`);
+      if (!isMounted() || !isCurrent()) return;
+      setTeam(data);
+      setLoadError("");
+    } catch (err) {
+      if (!isMounted() || !isCurrent()) return;
+      if (err.status === 401) {
+        router.push("/login");
+        return;
+      }
+      setLoadError(errorMessage(err, "Couldn't load this team. Please try again."));
+    }
   }
 
   useEffect(() => {
@@ -41,43 +61,73 @@ export default function TeamDetailPage() {
 
   async function handleInvite(e) {
     e.preventDefault();
+    if (inviting) return;
     setInviting(true);
     setError("");
     setSuccess("");
-    const res = await fetch(`/api/teams/${id}/members`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    setInviting(false);
-    if (!res.ok) {
-      setError(data.error);
-      return;
+    try {
+      const data = await apiFetch(`/api/teams/${id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!isMounted()) return;
+      setSuccess(
+        data.status === "invited"
+          ? `${email} doesn't have an account yet — an invitation email was sent. They'll join automatically once they sign up.`
+          : `${email} was added to the team.`
+      );
+      setEmail("");
+      load();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't add this member. Please try again."));
+    } finally {
+      if (isMounted()) setInviting(false);
     }
-    setSuccess(
-      data.status === "invited"
-        ? `${email} doesn't have an account yet — an invitation email was sent. They'll join automatically once they sign up.`
-        : `${email} was added to the team.`
-    );
-    setEmail("");
-    load();
   }
 
   async function confirmRemoveMember() {
-    if (!confirmRemove) return;
+    if (!confirmRemove || removing) return;
     setRemoving(true);
-    await fetch(`/api/teams/${id}/members?userId=${confirmRemove.id}`, { method: "DELETE" });
-    setRemoving(false);
-    setConfirmRemove(null);
-    load();
+    setRemoveError("");
+    try {
+      await apiFetch(`/api/teams/${id}/members?userId=${confirmRemove.id}`, { method: "DELETE" });
+      if (!isMounted()) return;
+      setConfirmRemove(null);
+      await load();
+    } catch (err) {
+      // Keep the confirmation open on failure and show the error in it —
+      // closing here (and only surfacing the error on the page underneath,
+      // which the dialog was covering) would look like nothing happened.
+      if (isMounted()) setRemoveError(errorMessage(err, "Couldn't remove this member. Please try again."));
+    } finally {
+      if (isMounted()) setRemoving(false);
+    }
   }
 
   async function cancelInvitation(invitationId) {
+    // Guards against a double-click firing two DELETEs for the same
+    // invitation while the first is still in flight.
+    if (cancelingInviteId) return;
     setCancelingInviteId(invitationId);
-    await fetch(`/api/teams/${id}/invitations/${invitationId}`, { method: "DELETE" });
-    setCancelingInviteId(null);
-    load();
+    setError("");
+    try {
+      await apiFetch(`/api/teams/${id}/invitations/${invitationId}`, { method: "DELETE" });
+      if (!isMounted()) return;
+      await load();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't cancel this invitation. Please try again."));
+    } finally {
+      if (isMounted()) setCancelingInviteId(null);
+    }
+  }
+
+  if (loadError && !team) {
+    return (
+      <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
+        {loadError}
+      </Alert>
+    );
   }
 
   if (!team) {
@@ -145,13 +195,19 @@ export default function TeamDetailPage() {
         {team.members.map((m, i) => (
           <Chip
             key={m.id}
-            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>{m.name.slice(0, 1)}</Avatar>}
+            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFE8" : "#1E1B16" }}>{avatarInitial(m.name)}</Avatar>}
             label={m.id === team.manager.id ? `${m.name} · Manager` : m.name}
             variant="outlined"
             color={m.id === team.manager.id ? "primary" : "default"}
-            onDelete={isManager && m.id !== team.manager.id ? () => setConfirmRemove(m) : undefined}
-            deleteIcon={<CloseIcon />}
-            sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both", animationDelay: `${staggerDelay(i, { base: 100 })}ms` }}
+            onDelete={
+              isManager && m.id !== team.manager.id
+                ? () => {
+                    setRemoveError("");
+                    setConfirmRemove(m);
+                  }
+                : undefined
+            }
+            deleteIcon={<CloseIcon titleAccess={`Remove ${m.name} from the team`} />}
           />
         ))}
       </Stack>
@@ -171,9 +227,14 @@ export default function TeamDetailPage() {
                 icon={<ScheduleSendIcon sx={{ fontSize: 16 }} />}
                 label={inv.email}
                 variant="outlined"
-                onDelete={() => cancelInvitation(inv.id)}
-                deleteIcon={cancelingInviteId === inv.id ? <CircularProgress size={14} /> : <CloseIcon />}
-                sx={{ animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both", animationDelay: `${staggerDelay(i, { base: 100 })}ms` }}
+                onDelete={cancelingInviteId ? undefined : () => cancelInvitation(inv.id)}
+                deleteIcon={
+                  cancelingInviteId === inv.id ? (
+                    <CircularProgress size={14} aria-label="Cancelling…" />
+                  ) : (
+                    <CloseIcon titleAccess={`Cancel invitation to ${inv.email}`} />
+                  )
+                }
               />
             ))}
           </Stack>
@@ -185,8 +246,12 @@ export default function TeamDetailPage() {
         title="Remove member"
         message={confirmRemove ? `“${confirmRemove.name}” will be removed from the team and will lose access to this team's projects.` : ""}
         onConfirm={confirmRemoveMember}
-        onClose={() => setConfirmRemove(null)}
+        onClose={() => {
+          setConfirmRemove(null);
+          setRemoveError("");
+        }}
         loading={removing}
+        error={removeError}
       />
     </Box>
   );

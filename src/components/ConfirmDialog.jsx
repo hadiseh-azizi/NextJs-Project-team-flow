@@ -1,16 +1,24 @@
 "use client";
 
-import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button } from "@mui/material";
+import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert } from "@mui/material";
 
-export default function ConfirmDialog({ open, title, message, confirmLabel = "Delete", onConfirm, onClose, loading = false }) {
+export default function ConfirmDialog({ open, title, message, confirmLabel = "Delete", onConfirm, onClose, loading = false, error = "" }) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="xs" fullWidth>
       <DialogTitle sx={{ fontWeight: 700 }}>{title}</DialogTitle>
       <DialogContent>
-        <DialogContentText>{message}</DialogContentText>
+        <DialogContentText sx={{ overflowWrap: "anywhere" }}>{message}</DialogContentText>
+        {error && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {error}
+          </Alert>
+        )}
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2.5 }}>
-        <Button onClick={onClose} color="inherit">
+        {/* Cancel, not the destructive action, gets the initial focus —
+            so pressing Enter right after the dialog opens can't confirm
+            a delete by reflex. */}
+        <Button onClick={onClose} color="inherit" disabled={loading} autoFocus>
           Cancel
         </Button>
         <Button onClick={onConfirm} color="error" variant="contained" disabled={loading}>

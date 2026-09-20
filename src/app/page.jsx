@@ -34,7 +34,6 @@ function BoardPreview() {
         borderRadius: 3,
         p: 2,
         bgcolor: "background.paper",
-        boxShadow: "0 24px 60px -20px rgba(20,21,26,0.18)",
       }}
     >
       <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, px: 0.5 }}>
@@ -95,7 +94,7 @@ export default function Home() {
             <Chip
               label="Built for small teams"
               size="small"
-              sx={{ bgcolor: "rgba(139,127,217,0.1)", color: "primary.main", mb: 2.5, fontWeight: 700 }}
+              sx={{ bgcolor: "rgba(168,117,46,0.1)", color: "primary.main", mb: 2.5, fontWeight: 700 }}
             />
             <Typography
               variant="h3"

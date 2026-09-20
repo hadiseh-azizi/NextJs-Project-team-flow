@@ -16,14 +16,19 @@ export default function ProjectCard({ project }) {
     <Card>
       <CardActionArea component={Link} href={`/dashboard/projects/${project.id}`} sx={{ p: 0.25 }}>
         <CardContent>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-            <Typography variant="h6" fontWeight={700} noWrap>
+          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1, mb: 1 }}>
+            <Typography variant="h6" fontWeight={700} noWrap sx={{ minWidth: 0 }}>
               {project.name}
             </Typography>
             <Chip
               label={project.team.name}
               size="small"
-              sx={{ bgcolor: pastelForString(project.team.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}
+              sx={{
+                bgcolor: pastelForString(project.team.id, mode),
+                color: mode === "dark" ? "#F1EEFB" : "#221F2E",
+                flexShrink: 0,
+                maxWidth: 140,
+              }}
             />
           </Box>
           {project.description && (

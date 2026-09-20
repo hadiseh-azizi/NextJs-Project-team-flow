@@ -11,7 +11,7 @@ export default async function DashboardLayout({ children }) {
   return (
     <>
       <Navbar userName={session.user.name || ""} />
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container component="main" maxWidth="lg" sx={{ py: 4 }}>
         {children}
       </Container>
     </>

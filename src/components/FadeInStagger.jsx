@@ -2,23 +2,19 @@
 
 import { Box } from "@mui/material";
 
-// The delay between item N and N+1 shrinks as the list goes on — the first
-// couple of items reveal at a relaxed pace, then the rest cascade in
-// increasingly quickly, rather than a flat metronome delay per item.
-export function staggerDelay(index, { base = 260, curve = 0.6 } = {}) {
-  return Math.round(base * (1 - 1 / (1 + index * curve)));
+// Lists (project cards, team cards, kanban columns, task cards) render
+// immediately with no entrance animation — a fade/blur/scale sequence on
+// every item on every page load reads as decorative rather than useful.
+// This wrapper is kept as a stable API for existing call sites but no
+// longer animates; motion in the app is reserved for direct responses to
+// a user action (opening a dialog, reordering a task), not page load.
+export function staggerDelay() {
+  return 0;
 }
 
-export default function FadeInStagger({ index = 0, base, curve, duration = 0.5, sx, children, ...props }) {
+export default function FadeInStagger({ index, base, curve, duration, sx, children, ...props }) {
   return (
-    <Box
-      sx={{
-        animation: `ff-fade-in ${duration}s cubic-bezier(.2,.8,.2,1) both`,
-        animationDelay: `${staggerDelay(index, { base, curve })}ms`,
-        ...sx,
-      }}
-      {...props}
-    >
+    <Box sx={sx} {...props}>
       {children}
     </Box>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Box, Paper, Typography, IconButton, TextField, Menu, MenuItem, Tooltip, Alert, Snackbar,
 } from "@mui/material";
@@ -14,8 +14,13 @@ import TaskDetailDialog from "@/components/TaskDetailDialog";
 import NewTaskModal from "@/components/NewTaskModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import FadeInStagger from "@/components/FadeInStagger";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { compareTasks, currentSiblingIndex } from "@/lib/taskOrderCompare";
+import { compareColumns } from "@/lib/columnOrderCompare";
+import { useIsMounted } from "@/lib/clientAsync";
 
 export default function KanbanBoard({ projectId, columns, tasks, onChanged, assignableUsers }) {
+  const isMounted = useIsMounted();
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { columnId, taskId, position } | { columnId, position: "end" }
   const [openTaskId, setOpenTaskId] = useState(null);
@@ -26,12 +31,27 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   const [renameValue, setRenameValue] = useState("");
   const [addingColumn, setAddingColumn] = useState(false);
   const [newColumnName, setNewColumnName] = useState("");
+  const [addingColumnSubmitting, setAddingColumnSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(null);
+  const [deleteTaskError, setDeleteTaskError] = useState("");
   const [confirmDeleteColumn, setConfirmDeleteColumn] = useState(null);
+  const [deleteColumnError, setDeleteColumnError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // Tasks with a move request currently in flight — a card can only be
+  // dropped again once its previous move has resolved, so two overlapping
+  // PATCHes for the same task (and the ordering confusion that would
+  // cause) can't happen.
+  const movingTaskIds = useRef(new Set());
+  // Guards per-column single-flight requests that have no other in-flight
+  // tracking of their own: renaming (the field can trigger a save from
+  // both onBlur and onKeyDown/Enter, which can fire close enough together
+  // to both start a request for the same column) and toggling the "done"
+  // column flag (keyed as `done:${columnId}` to share this one Set
+  // without colliding with a rename in flight for the same column).
+  const renamingInFlight = useRef(new Set());
 
-  const sortedColumns = [...columns].sort((a, b) => a.order - b.order);
+  const sortedColumns = [...columns].sort(compareColumns);
   const openTask = tasks.find((t) => t.id === openTaskId) || null;
 
   function handleDragStart(e, taskId) {
@@ -52,11 +72,24 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   }
 
   // Fired over the empty background of a column (not over any specific
-  // card) — means "drop at the end of this column".
+  // card) — means "drop at the end of this column". This fires whenever
+  // the pointer is over the column's Paper but not over a card (cards
+  // stop propagation in handleCardDragOver, so this never fires while
+  // hovering a card itself) — including the gap below the last card, so
+  // moving off a card into empty space must always resolve to "end", not
+  // whatever card was last hovered. The functional update still skips the
+  // setState when nothing would actually change (already "end" for this
+  // column), to avoid re-rendering on every pixel of pointer movement —
+  // it just no longer confuses "already end" with "was previously over a
+  // card in this column".
   function handleColumnDragOver(e, columnId) {
     e.preventDefault();
     setDragOverCol(columnId);
-    setDropTarget((prev) => (prev && prev.columnId === columnId && prev.taskId ? prev : { columnId, position: "end" }));
+    setDropTarget((prev) =>
+      prev && prev.columnId === columnId && prev.position === "end" && !prev.taskId
+        ? prev
+        : { columnId, position: "end" }
+    );
   }
 
   async function handleDrop(e, columnId) {
@@ -66,102 +99,182 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     setDragOverCol(null);
     setDropTarget(null);
 
+    // Dropped on itself (e.g. hovered the card being dragged) — harmless,
+    // nothing to do.
+    if (!taskId || target.taskId === taskId) return;
+
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
+    // A move for this task is already in flight — ignore this drop rather
+    // than firing a second overlapping PATCH for the same card (whichever
+    // response landed last would win, silently discarding the other move).
+    if (movingTaskIds.current.has(taskId)) return;
+
+    // The server is authoritative on the actual order values (integers,
+    // rebalanced as needed — see lib/taskOrdering.js) — the client only
+    // asks for a position among the destination column's other tasks.
     const siblings = tasks
       .filter((t) => t.columnId === columnId && t.id !== taskId)
-      .sort((a, b) => a.order - b.order);
+      .sort(compareTasks);
 
-    let newOrder;
-    if (siblings.length === 0) {
-      newOrder = 0;
-    } else if (target.position === "end" || !target.taskId) {
-      newOrder = siblings[siblings.length - 1].order + 1;
+    let targetIndex;
+    if (target.position === "end" || !target.taskId) {
+      targetIndex = siblings.length;
     } else {
       const idx = siblings.findIndex((t) => t.id === target.taskId);
-      if (target.position === "before") {
-        const prevOrder = idx > 0 ? siblings[idx - 1].order : siblings[idx].order - 1;
-        newOrder = (prevOrder + siblings[idx].order) / 2;
-      } else {
-        const nextOrder = idx < siblings.length - 1 ? siblings[idx + 1].order : siblings[idx].order + 1;
-        newOrder = (siblings[idx].order + nextOrder) / 2;
-      }
+      targetIndex = target.position === "before" ? idx : idx + 1;
     }
 
-    if (task.columnId === columnId && task.order === newOrder) return;
+    // No-op if this is exactly where the task already sits. Uses the same
+    // compareTasks tie-break `siblings` was sorted with (order, then
+    // createdAt, then id) rather than a bare `order` comparison — with
+    // duplicate `order` values (see lib/taskOrdering.js, which tolerates
+    // these under concurrent writes), a bare comparison can place the
+    // task's "current" index somewhere other than where it's actually
+    // rendered, which would either silently drop a real move or fire an
+    // unnecessary one. See lib/taskOrderCompare.js for details.
+    if (task.columnId === columnId) {
+      const effectiveCurrentIndex = currentSiblingIndex(task, siblings);
+      if (effectiveCurrentIndex === targetIndex) return;
+    }
 
-    await fetch(`/api/tasks/${taskId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ columnId, order: newOrder }),
-    });
-    onChanged();
+    movingTaskIds.current.add(taskId);
+    try {
+      await apiFetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ columnId, targetIndex }),
+      });
+      if (isMounted()) onChanged();
+    } catch (err) {
+      // Local state was never mutated optimistically — it comes from
+      // `tasks`/`onChanged()` (a server refetch) — so a failed move
+      // leaves the board exactly as it was before the drag, no stale
+      // "task looks moved but isn't" state to undo.
+      if (isMounted()) setError(errorMessage(err, "Couldn't move the task. Please try again."));
+    } finally {
+      movingTaskIds.current.delete(taskId);
+    }
   }
 
   async function confirmTaskDelete() {
-    if (!confirmDeleteTask) return;
+    if (!confirmDeleteTask || deleting) return;
     setDeleting(true);
-    await fetch(`/api/tasks/${confirmDeleteTask.id}`, { method: "DELETE" });
-    setDeleting(false);
-    setConfirmDeleteTask(null);
-    onChanged();
+    setDeleteTaskError("");
+    try {
+      await apiFetch(`/api/tasks/${confirmDeleteTask.id}`, { method: "DELETE" });
+      if (!isMounted()) return;
+      setConfirmDeleteTask(null);
+      onChanged();
+    } catch (err) {
+      // Keep the confirmation open so the error is actually visible —
+      // it would otherwise render behind this still-open dialog.
+      if (isMounted()) setDeleteTaskError(errorMessage(err, "Couldn't delete the task. Please try again."));
+    } finally {
+      if (isMounted()) setDeleting(false);
+    }
   }
 
   async function handleAddColumn(e) {
     e.preventDefault();
-    if (!newColumnName.trim()) return;
-    await fetch(`/api/projects/${projectId}/columns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newColumnName }),
-    });
-    setNewColumnName("");
-    setAddingColumn(false);
-    onChanged();
+    if (!newColumnName.trim() || addingColumnSubmitting) return;
+    setAddingColumnSubmitting(true);
+    try {
+      await apiFetch(`/api/projects/${projectId}/columns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newColumnName }),
+      });
+      if (!isMounted()) return;
+      setNewColumnName("");
+      setAddingColumn(false);
+      onChanged();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't add the column. Please try again."));
+    } finally {
+      if (isMounted()) setAddingColumnSubmitting(false);
+    }
   }
 
   async function handleRenameColumn(columnId) {
-    if (!renameValue.trim()) {
+    const trimmed = renameValue.trim();
+    const current = columns.find((c) => c.id === columnId);
+    if (!trimmed || (current && trimmed === current.name)) {
       setRenamingId(null);
       return;
     }
-    await fetch(`/api/projects/${projectId}/columns/${columnId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: renameValue }),
-    });
-    setRenamingId(null);
-    onChanged();
+    // The field commits on both blur and Enter, which can fire close
+    // enough together (Enter, then the resulting blur) to both reach here
+    // for the same column before the first request finishes — only let
+    // one PATCH for a given column be in flight at a time.
+    if (renamingInFlight.current.has(columnId)) return;
+    renamingInFlight.current.add(columnId);
+    try {
+      await apiFetch(`/api/projects/${projectId}/columns/${columnId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameValue }),
+      });
+      if (isMounted()) onChanged();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't rename the column. Please try again."));
+    } finally {
+      renamingInFlight.current.delete(columnId);
+      if (isMounted()) setRenamingId(null);
+    }
   }
 
   async function handleToggleDoneColumn(column) {
+    // The menu item that triggers this is removed from the DOM as soon as
+    // the menu closes below, so a literal double-click can't reach it
+    // twice — this guard is for the same class of fast-repeat trigger the
+    // rename/move handlers above already guard against (e.g. assistive
+    // tech re-dispatching the activation event), kept consistent with
+    // those rather than because it's been observed here specifically.
+    if (renamingInFlight.current.has(`done:${column.id}`)) return;
+    renamingInFlight.current.add(`done:${column.id}`);
     setMenuAnchor(null);
-    await fetch(`/api/projects/${projectId}/columns/${column.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ isDoneColumn: !column.isDoneColumn }),
-    });
-    onChanged();
+    try {
+      await apiFetch(`/api/projects/${projectId}/columns/${column.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDoneColumn: !column.isDoneColumn }),
+      });
+      if (isMounted()) onChanged();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't update the column. Please try again."));
+    } finally {
+      renamingInFlight.current.delete(`done:${column.id}`);
+    }
   }
 
   async function confirmColumnDelete() {
-    if (!confirmDeleteColumn) return;
+    if (!confirmDeleteColumn || deleting) return;
     setDeleting(true);
-    const res = await fetch(`/api/projects/${projectId}/columns/${confirmDeleteColumn.id}`, { method: "DELETE" });
-    setDeleting(false);
-    setConfirmDeleteColumn(null);
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "This column can't be deleted");
-      return;
+    setDeleteColumnError("");
+    try {
+      await apiFetch(`/api/projects/${projectId}/columns/${confirmDeleteColumn.id}`, { method: "DELETE" });
+      if (!isMounted()) return;
+      setConfirmDeleteColumn(null);
+      onChanged();
+    } catch (err) {
+      // Deletion very commonly fails here because the column still has
+      // tasks in it — that's expected and explained in the dialog's own
+      // message, so the dialog should stay open with the reason visible
+      // rather than closing and losing that context.
+      if (isMounted()) setDeleteColumnError(errorMessage(err, "This column can't be deleted"));
+    } finally {
+      if (isMounted()) setDeleting(false);
     }
-    onChanged();
   }
 
   return (
     <>
       <Box
+        role="region"
+        aria-label="Kanban board columns"
+        tabIndex={0}
         sx={{
           display: "flex",
           gap: 2,
@@ -170,10 +283,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           alignItems: "flex-start",
           "&::-webkit-scrollbar": { height: 6 },
           "&::-webkit-scrollbar-thumb": { bgcolor: "grey.300", borderRadius: 3 },
+          "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
         }}
       >
         {sortedColumns.map((column, columnIndex) => {
-          const colTasks = tasks.filter((t) => t.columnId === column.id).sort((a, b) => a.order - b.order);
+          const colTasks = tasks.filter((t) => t.columnId === column.id).sort(compareTasks);
           const isOver = dragOverCol === column.id;
           const colDropTarget = dropTarget && dropTarget.columnId === column.id ? dropTarget : null;
           return (
@@ -204,20 +318,47 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                     size="small"
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
+                    onFocus={(e) => e.target.select()}
                     onBlur={() => handleRenameColumn(column.id)}
-                    onKeyDown={(e) => e.key === "Enter" && handleRenameColumn(column.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleRenameColumn(column.id);
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setRenamingId(null);
+                      }
+                    }}
+                    inputProps={{ "aria-label": `Rename column ${column.name}` }}
                     sx={{ flexGrow: 1, "& .MuiOutlinedInput-input": { py: 0.5 } }}
                   />
                 ) : (
                   <Typography
+                    component="span"
+                    role="button"
+                    tabIndex={0}
                     variant="subtitle2"
                     noWrap
                     title={column.name}
+                    aria-label={`Rename column ${column.name}`}
                     onClick={() => {
                       setRenamingId(column.id);
                       setRenameValue(column.name);
                     }}
-                    sx={{ flexGrow: 1, minWidth: 0, cursor: "text", "&:hover": { color: "primary.main" } }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setRenamingId(column.id);
+                        setRenameValue(column.name);
+                      }
+                    }}
+                    sx={{
+                      flexGrow: 1,
+                      minWidth: 0,
+                      cursor: "text",
+                      "&:hover": { color: "primary.main" },
+                      "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px", borderRadius: 0.5 },
+                    }}
                   >
                     {column.name}
                   </Typography>
@@ -227,6 +368,8 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 </Typography>
                 <IconButton
                   size="small"
+                  aria-label={`${column.name} column options`}
+                  aria-haspopup="true"
                   onClick={(e) => {
                     setMenuAnchor(e.currentTarget);
                     setMenuColumn(column);
@@ -243,7 +386,10 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                       task={task}
                       onDragStart={handleDragStart}
                       onDragOverCard={(e, t) => handleCardDragOver(e, column.id, t)}
-                      onDelete={setConfirmDeleteTask}
+                      onDelete={(t) => {
+                        setDeleteTaskError("");
+                        setConfirmDeleteTask(t);
+                      }}
                       onOpen={(t) => setOpenTaskId(t.id)}
                       dropIndicator={colDropTarget?.taskId === task.id ? colDropTarget.position : null}
                     />
@@ -262,11 +408,16 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               </Box>
 
               <Box
+                component="button"
+                type="button"
                 onClick={() => setNewTaskColumnId(column.id)}
+                aria-label={`Add task to ${column.name}`}
                 sx={{
-                  display: "flex", alignItems: "center", gap: 0.5, mt: 1, px: 1, py: 0.75,
+                  display: "flex", alignItems: "center", gap: 0.5, mt: 1, px: 1, py: 0.75, width: "100%",
+                  border: "none", bgcolor: "transparent", font: "inherit", textAlign: "left",
                   borderRadius: 1.5, cursor: "pointer", color: "text.secondary",
                   "&:hover": { bgcolor: "action.hover", color: "primary.main" },
+                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "-2px" },
                 }}
               >
                 <AddIcon sx={{ fontSize: 17 }} />
@@ -287,27 +438,44 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 fullWidth
                 size="small"
                 placeholder="New column name"
+                inputProps={{ "aria-label": "New column name" }}
                 value={newColumnName}
                 onChange={(e) => setNewColumnName(e.target.value)}
-                onBlur={() => !newColumnName.trim() && setAddingColumn(false)}
+                onBlur={() => !newColumnName.trim() && !addingColumnSubmitting && setAddingColumn(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setAddingColumn(false);
+                    setNewColumnName("");
+                  }
+                }}
+                disabled={addingColumnSubmitting}
                 sx={{ mb: 1 }}
               />
               <Box sx={{ display: "flex", gap: 1 }}>
                 <Box
                   component="button"
                   type="submit"
+                  disabled={addingColumnSubmitting}
                   sx={{
                     border: "none", cursor: "pointer", bgcolor: "primary.main", color: "white",
-                    borderRadius: 1, px: 1.5, py: 0.5, fontSize: 13, fontWeight: 600,
+                    borderRadius: 1, px: 1.5, py: 0.5, fontSize: 13, fontWeight: 600, font: "inherit",
+                    "&:disabled": { cursor: "default", opacity: 0.6 },
+                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
                   }}
                 >
-                  Add
+                  {addingColumnSubmitting ? "Adding..." : "Add"}
                 </Box>
                 <Box
                   component="button"
                   type="button"
+                  disabled={addingColumnSubmitting}
                   onClick={() => setAddingColumn(false)}
-                  sx={{ border: "none", cursor: "pointer", bgcolor: "transparent", color: "text.secondary", fontSize: 13 }}
+                  sx={{
+                    border: "none", cursor: "pointer", bgcolor: "transparent", color: "text.secondary", fontSize: 13, font: "inherit",
+                    "&:disabled": { cursor: "default", opacity: 0.6 },
+                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
+                  }}
                 >
                   Cancel
                 </Box>
@@ -315,11 +483,15 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
             </Paper>
           ) : (
             <Box
+              component="button"
+              type="button"
               onClick={() => setAddingColumn(true)}
               sx={(theme) => ({
-                display: "flex", alignItems: "center", gap: 0.75, p: 1.5, borderRadius: 2,
+                display: "flex", alignItems: "center", gap: 0.75, p: 1.5, width: "100%", borderRadius: 2,
                 border: "1.5px dashed", borderColor: "grey.300", cursor: "pointer", color: "text.secondary",
+                bgcolor: "transparent", font: "inherit", textAlign: "left",
                 "&:hover": { borderColor: "primary.main", color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.05) },
+                "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
               })}
             >
               <AddIcon fontSize="small" />
@@ -354,6 +526,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         </MenuItem>
         <MenuItem
           onClick={() => {
+            setDeleteColumnError("");
             setConfirmDeleteColumn(menuColumn);
             setMenuAnchor(null);
           }}
@@ -393,8 +566,12 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         title="Delete task"
         message={confirmDeleteTask ? `“${confirmDeleteTask.title}” will be permanently deleted. Are you sure?` : ""}
         onConfirm={confirmTaskDelete}
-        onClose={() => setConfirmDeleteTask(null)}
+        onClose={() => {
+          setConfirmDeleteTask(null);
+          setDeleteTaskError("");
+        }}
         loading={deleting}
+        error={deleteTaskError}
       />
 
       <ConfirmDialog
@@ -402,8 +579,12 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         title="Delete column"
         message={confirmDeleteColumn ? `Column “${confirmDeleteColumn.name}” will be deleted. If it still has tasks in it, the deletion will fail.` : ""}
         onConfirm={confirmColumnDelete}
-        onClose={() => setConfirmDeleteColumn(null)}
+        onClose={() => {
+          setConfirmDeleteColumn(null);
+          setDeleteColumnError("");
+        }}
         loading={deleting}
+        error={deleteColumnError}
       />
 
       <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError("")}>

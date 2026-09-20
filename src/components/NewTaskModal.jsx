@@ -4,41 +4,55 @@ import { useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Button, MenuItem, Grid, Select, InputLabel, FormControl, Checkbox,
-  ListItemText, Chip, Box, OutlinedInput, Typography,
+  ListItemText, Chip, Box, OutlinedInput, Typography, Alert, useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import ColorSwatchPicker from "@/components/ColorSwatchPicker";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted } from "@/lib/clientAsync";
 
 export default function NewTaskModal({ projectId, columnId, columnName, assignableUsers, onClose, onCreated }) {
+  const isMounted = useIsMounted();
+  const theme = useTheme();
+  const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeIds, setAssigneeIds] = useState([]);
   const [dueDate, setDueDate] = useState("");
   const [color, setColor] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
-    await fetch("/api/tasks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId,
-        columnId,
-        title,
-        description,
-        assigneeIds,
-        dueDate: dueDate || null,
-        color,
-      }),
-    });
-    setSubmitting(false);
-    onCreated();
-    onClose();
+    setError("");
+    try {
+      await apiFetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          columnId,
+          title,
+          description,
+          assigneeIds,
+          dueDate: dueDate || null,
+          color,
+        }),
+      });
+      onCreated();
+      onClose();
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Couldn't create the task. Please try again."));
+    } finally {
+      if (isMounted()) setSubmitting(false);
+    }
   }
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+    <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <form onSubmit={handleSubmit}>
         <DialogTitle sx={{ fontWeight: 700 }}>
           New task
@@ -111,9 +125,14 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
             COLOR (OPTIONAL)
           </Typography>
           <ColorSwatchPicker value={color} onChange={setColor} />
+          {error && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {error}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={onClose} color="inherit">
+          <Button onClick={onClose} color="inherit" disabled={submitting}>
             Cancel
           </Button>
           <Button type="submit" variant="contained" disabled={submitting}>

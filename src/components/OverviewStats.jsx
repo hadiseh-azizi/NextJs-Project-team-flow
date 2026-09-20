@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { Box, Paper, Typography, List, ListItemButton, ListItemText } from "@mui/material";
 import { alpha } from "@mui/material/styles";
-import { staggerDelay } from "@/components/FadeInStagger";
 
 export default function OverviewStats({ projects, userId }) {
   const [activeStat, setActiveStat] = useState(null);
@@ -49,7 +48,10 @@ export default function OverviewStats({ projects, userId }) {
             <Box
               key={s.key}
               component="button"
+              type="button"
               onClick={() => setActiveStat(active ? null : s.key)}
+              aria-pressed={active}
+              aria-expanded={active}
               sx={(theme) => ({
                 flex: 1,
                 textAlign: "left",
@@ -60,8 +62,6 @@ export default function OverviewStats({ projects, userId }) {
                 borderLeft: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
                 bgcolor: active ? alpha(theme.palette.primary.main, 0.06) : "transparent",
                 transition: "background-color .15s",
-                animation: "ff-fade-in .5s cubic-bezier(.2,.8,.2,1) both",
-                animationDelay: `${staggerDelay(i, { base: 180 })}ms`,
                 "&:hover": { bgcolor: alpha(theme.palette.primary.main, active ? 0.1 : 0.04) },
               })}
             >
@@ -90,10 +90,6 @@ export default function OverviewStats({ projects, userId }) {
                   component={Link}
                   href={it.href}
                   divider={i < items.length - 1}
-                  sx={{
-                    animation: "ff-fade-in .4s cubic-bezier(.2,.8,.2,1) both",
-                    animationDelay: `${staggerDelay(i, { base: 110 })}ms`,
-                  }}
                 >
                   <ListItemText primary={it.primary} secondary={it.secondary} />
                 </ListItemButton>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -12,16 +13,26 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
 import { pastelForString } from "@/lib/pastelColor";
+import { avatarInitial } from "@/lib/avatarInitial";
 
 export default function Navbar({ userName }) {
   const pathname = usePathname();
   const { mode } = useThemeMode();
+  const [signingOut, setSigningOut] = useState(false);
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
     { href: "/dashboard/projects", label: "Projects", icon: <ViewKanbanIcon sx={{ fontSize: 18 }} /> },
     { href: "/dashboard/teams", label: "Teams", icon: <GroupsIcon sx={{ fontSize: 18 }} /> },
   ];
+
+  function handleSignOut() {
+    // signOut() navigates away, but that redirect isn't instant — without
+    // this guard a fast double-click fires the request twice.
+    if (signingOut) return;
+    setSigningOut(true);
+    signOut({ callbackUrl: "/" });
+  }
 
   return (
     <AppBar position="sticky" color="transparent" elevation={0}>
@@ -53,6 +64,8 @@ export default function Navbar({ userName }) {
                 component={Link}
                 href={l.href}
                 disableRipple
+                aria-label={l.label}
+                aria-current={active ? "page" : undefined}
                 sx={(theme) => ({
                   minWidth: 0,
                   px: { xs: 1, sm: 2 },
@@ -81,9 +94,14 @@ export default function Navbar({ userName }) {
             sx={{ pl: 0.5, pr: { xs: 0, sm: 1 }, borderRight: { xs: "none", sm: "1px solid" }, borderColor: "divider" }}
           >
             <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
-              {userName.slice(0, 1)}
+              {avatarInitial(userName)}
             </Avatar>
-            <Typography variant="body2" color="text.secondary" sx={{ display: { xs: "none", sm: "block" } }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              sx={{ display: { xs: "none", sm: "block" }, maxWidth: 160 }}
+            >
               {userName}
             </Typography>
           </Stack>
@@ -91,8 +109,10 @@ export default function Navbar({ userName }) {
             size="small"
             color="inherit"
             disableRipple
+            disabled={signingOut}
+            aria-label="Sign out"
             sx={{ minWidth: 0, px: { xs: 1, sm: 2 }, color: "text.secondary", "&:hover": { color: "error.main", bgcolor: "transparent" } }}
-            onClick={() => signOut({ callbackUrl: "/" })}
+            onClick={handleSignOut}
           >
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
               <LogoutIcon sx={{ fontSize: 16 }} />

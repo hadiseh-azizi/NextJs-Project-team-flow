@@ -4,6 +4,9 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Team from "@/models/Team";
 import Invitation from "@/models/Invitation";
+import { isValidObjectId } from "@/lib/objectId";
+import { isTeamManager } from "@/lib/authz";
+import { withMongoErrorHandling } from "@/lib/mongoErrors";
 
 // Lets the team manager retract an invitation before the person signs up.
 export async function DELETE(req, { params }) {
@@ -11,14 +14,22 @@ export async function DELETE(req, { params }) {
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const userId = session.user.id;
 
+  const { id, invitationId } = await params;
+
+  if (!isValidObjectId(id) || !isValidObjectId(invitationId)) {
+    return NextResponse.json({ error: "Team not found" }, { status: 404 });
+  }
+
   await connectDB();
 
-  const team = await Team.findById(params.id).lean();
+  const team = await Team.findById(id).lean();
   if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
-  if (String(team.manager) !== userId) {
+  if (!isTeamManager(team, userId)) {
     return NextResponse.json({ error: "Only the team manager can cancel invitations" }, { status: 403 });
   }
 
-  await Invitation.deleteOne({ _id: params.invitationId, team: params.id });
-  return NextResponse.json({ ok: true });
+  return withMongoErrorHandling(async () => {
+    await Invitation.deleteOne({ _id: invitationId, team: id });
+    return NextResponse.json({ ok: true });
+  });
 }

@@ -10,12 +10,14 @@ export default function ThemeToggleButton() {
   const { mode, toggleMode } = useThemeMode();
   const isDark = mode === "dark";
 
+  const label = isDark ? "Switch to light mode" : "Switch to dark mode";
+
   return (
-    <Tooltip title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+    <Tooltip title={label}>
       <IconButton
         onClick={toggleMode}
         size="small"
-        aria-label="Toggle dark mode"
+        aria-label={label}
         sx={(theme) => ({
           position: "relative",
           width: 34,

@@ -4,6 +4,11 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Team from "@/models/Team";
 import { toTeamDTO } from "@/lib/serialize";
+import { parseJsonBody } from "@/lib/parseJsonBody";
+import { validateRequiredString } from "@/lib/validation";
+import { withMongoErrorHandling } from "@/lib/mongoErrors";
+
+const MAX_TEAM_NAME_LENGTH = 100;
 
 // Teams the current user manages or is a member of.
 export async function GET() {
@@ -29,16 +34,21 @@ export async function POST(req) {
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const userId = session.user.id;
 
-  const { name } = await req.json();
-  if (!name) return NextResponse.json({ error: "Team name is required" }, { status: 400 });
+  const body = await parseJsonBody(req);
+  if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+
+  const nameResult = validateRequiredString(body.name, { field: "Team name", maxLength: MAX_TEAM_NAME_LENGTH });
+  if (nameResult.error) return NextResponse.json({ error: nameResult.error }, { status: 400 });
 
   await connectDB();
 
-  const team = await Team.create({ name, manager: userId, members: [userId] });
-  const populated = await Team.findById(team._id)
-    .populate("manager", "name email")
-    .populate("members", "name email")
-    .lean();
+  return withMongoErrorHandling(async () => {
+    const team = await Team.create({ name: nameResult.value, manager: userId, members: [userId] });
+    const populated = await Team.findById(team._id)
+      .populate("manager", "name email")
+      .populate("members", "name email")
+      .lean();
 
-  return NextResponse.json(toTeamDTO(populated), { status: 201 });
+    return NextResponse.json(toTeamDTO(populated), { status: 201 });
+  });
 }

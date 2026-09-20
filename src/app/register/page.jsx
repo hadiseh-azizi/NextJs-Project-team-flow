@@ -5,9 +5,12 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Box, Paper, Typography, TextField, Button, Alert } from "@mui/material";
 import MarkEmailReadIcon from "@mui/icons-material/MarkEmailRead";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted } from "@/lib/clientAsync";
 
 function RegisterForm() {
   const searchParams = useSearchParams();
+  const isMounted = useIsMounted();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,25 +27,24 @@ function RegisterForm() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading) return;
     setError("");
     setLoading(true);
 
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
-    });
-    const data = await res.json();
-    setLoading(false);
-
-    if (!res.ok) {
-      setError(data.error || "Something went wrong");
-      return;
+    try {
+      await apiFetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password }),
+      });
+      // Sign-in is blocked until the email is confirmed, so there's no point
+      // trying to log them in right away — just tell them to check their inbox.
+      if (isMounted()) setRegisteredEmail(email);
+    } catch (err) {
+      if (isMounted()) setError(errorMessage(err, "Something went wrong. Please try again."));
+    } finally {
+      if (isMounted()) setLoading(false);
     }
-
-    // Sign-in is blocked until the email is confirmed, so there's no point
-    // trying to log them in right away — just tell them to check their inbox.
-    setRegisteredEmail(email);
   }
 
   if (registeredEmail) {

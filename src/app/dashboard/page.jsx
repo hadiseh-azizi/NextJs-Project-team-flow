@@ -3,9 +3,9 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Project from "@/models/Project";
 import Task from "@/models/Task";
-import Team from "@/models/Team";
 import Column from "@/models/Column";
 import { toProjectDTO } from "@/lib/serialize";
+import { accessibleTeamIds } from "@/lib/authz";
 import ProgressChart from "@/components/ProgressChart";
 import OverviewStats from "@/components/OverviewStats";
 import Link from "next/link";
@@ -20,8 +20,7 @@ export default async function DashboardPage() {
 
   await connectDB();
 
-  const myTeams = await Team.find({ members: userId }).select("_id").lean();
-  const teamIds = myTeams.map((t) => t._id);
+  const teamIds = await accessibleTeamIds(userId);
 
   const projects = await Project.find({ $or: [{ manager: userId }, { team: { $in: teamIds } }] })
     .populate("manager", "name email")
@@ -32,7 +31,15 @@ export default async function DashboardPage() {
   const projectIds = projects.map((p) => p._id);
   const [allColumns, allTasks] = await Promise.all([
     Column.find({ project: { $in: projectIds } }).lean(),
-    Task.find({ project: { $in: projectIds } }).populate("assignees", "name").lean(),
+    // "-attachments.data" excludes the base64 file contents: this page
+    // only ever renders task titles/status/progress via toProjectDTO(),
+    // which never includes attachment bytes, so there's no reason to
+    // pull potentially several MB of base64 out of MongoDB per task just
+    // to discard it while building the dashboard.
+    Task.find({ project: { $in: projectIds } })
+      .select("-attachments.data")
+      .populate("assignees", "name")
+      .lean(),
   ]);
 
   const serialized = projects.map((p) =>

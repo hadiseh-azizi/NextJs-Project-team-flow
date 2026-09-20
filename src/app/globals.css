@@ -10,35 +10,33 @@ body {
   box-sizing: border-box;
 }
 
-/* Applied to <html> for ~500ms right when the dark/light toggle is
-   clicked, so every surface's color crossfades smoothly instead of
-   flipping instantly. Removed right after, so it never slows down
-   ordinary hover/interaction transitions defined elsewhere. */
+/* Matches the theme.js palette's canvas colors. `data-theme-mode` is set
+   synchronously before hydration (see the inline script in layout.jsx),
+   so the background is already correct on first paint — CssBaseline then
+   takes over once MUI mounts, with no visible handoff. Also tells native
+   form controls, scrollbars, etc. which color scheme to render in. */
+html[data-theme-mode="light"] {
+  color-scheme: light;
+  background-color: #FAFAF6;
+}
+html[data-theme-mode="dark"] {
+  color-scheme: dark;
+  background-color: #1A1814;
+}
+html[data-theme-mode="dark"] body {
+  background-color: #1A1814;
+}
+
+/* Applied to <html> for ~300ms right when the dark/light toggle is
+   clicked, so surface colors crossfade instead of flipping instantly.
+   This is the one non-interaction animation in the app: it responds
+   directly to a user click and touches color only, no transform/blur. */
 .theme-transitioning,
 .theme-transitioning * {
   transition:
-    background-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-    color 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-    fill 0.45s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-/* Used by <FadeInStagger> — content starts slightly lower, blurred, and
-   transparent (like a Telegram sticker still resolving) and settles into
-   place. Combined with a per-item animation-delay, a list appears to
-   reveal itself item by item instead of popping in all at once. */
-@keyframes ff-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(10px) scale(0.98);
-    filter: blur(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
-  }
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease !important;
 }
 
 @keyframes ff-shimmer {
@@ -47,5 +45,18 @@ body {
   }
   to {
     background-position: 200% 0;
+  }
+}
+
+/* Respect the OS-level "reduce motion" setting: the theme crossfade and
+   any hover/press micro-transitions are nice-to-have, never load-bearing,
+   so people who've asked for less motion get an effectively instant UI. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }

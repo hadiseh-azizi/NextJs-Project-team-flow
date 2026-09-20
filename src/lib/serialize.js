@@ -1,6 +1,8 @@
 // Converts populated, .lean()'d Mongoose documents into the plain DTOs the
 // frontend components expect.
 
+import { compareColumns } from "@/lib/columnOrderCompare";
+
 function idStr(id) {
   return String(id);
 }
@@ -46,6 +48,9 @@ export function toColumnDTO(column) {
     name: column.name,
     order: column.order,
     isDoneColumn: !!column.isDoneColumn,
+    // Exposed so the board can break ties deterministically when two
+    // columns ever share an `order` value — see lib/columnOrderCompare.js.
+    createdAt: column.createdAt ? new Date(column.createdAt).toISOString() : null,
   };
 }
 
@@ -56,6 +61,10 @@ export function toTaskDTO(task) {
     description: task.description ?? null,
     columnId: idStr(task.column),
     order: task.order,
+    // Exposed so the board can break ties deterministically when two
+    // tasks in the same column ever share an `order` value — see
+    // lib/taskOrderCompare.js.
+    createdAt: task.createdAt ? new Date(task.createdAt).toISOString() : null,
     dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : null,
     color: task.color ?? null,
     assignees: (task.assignees || []).map(toUserDTO),
@@ -72,7 +81,7 @@ export function toProjectDTO(project, columns, tasks) {
     createdAt: new Date(project.createdAt).toISOString(),
     manager: toUserDTO(project.manager),
     team: toTeamDTO(project.team),
-    columns: columns.map(toColumnDTO).sort((a, b) => a.order - b.order),
+    columns: columns.map(toColumnDTO).sort(compareColumns),
     tasks: tasks.map(toTaskDTO),
   };
 }

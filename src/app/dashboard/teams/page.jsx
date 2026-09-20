@@ -6,30 +6,51 @@ import { useRouter } from "next/navigation";
 import {
   Box, Typography, Button, Grid, Card, CardActionArea, CardContent, Dialog, DialogTitle,
   DialogContent, DialogActions, TextField, CircularProgress, AvatarGroup, Avatar,
-  Checkbox, FormControlLabel, Collapse, Divider, Skeleton,
+  Checkbox, FormControlLabel, Collapse, Divider, Skeleton, Alert,
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
+import { avatarInitial } from "@/lib/avatarInitial";
 import FadeInStagger from "@/components/FadeInStagger";
+import { apiFetch, errorMessage } from "@/lib/apiFetch";
+import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
 export default function TeamsPage() {
   const router = useRouter();
   const { mode } = useThemeMode();
+  const isMounted = useIsMounted();
+  const nextRequest = useLatestRequest();
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [addProject, setAddProject] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [notice, setNotice] = useState("");
 
   async function load() {
+    const isCurrent = nextRequest();
     setLoading(true);
-    const res = await fetch("/api/teams");
-    setTeams(await res.json());
-    setLoading(false);
+    setLoadError("");
+    try {
+      const data = await apiFetch("/api/teams");
+      if (!isMounted() || !isCurrent()) return;
+      setTeams(data);
+    } catch (err) {
+      if (!isMounted() || !isCurrent()) return;
+      if (err.status === 401) {
+        router.push("/login");
+        return;
+      }
+      setLoadError(errorMessage(err, "Couldn't load your teams. Please try again."));
+    } finally {
+      if (isMounted() && isCurrent()) setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -42,38 +63,60 @@ export default function TeamsPage() {
     setAddProject(false);
     setProjectName("");
     setProjectDescription("");
+    setFormError("");
   }
 
   async function handleCreate(e) {
     e.preventDefault();
+    if (submitting) return;
     setSubmitting(true);
+    setFormError("");
 
-    const teamRes = await fetch("/api/teams", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
-    });
-    const team = await teamRes.json();
-
-    // Creating the team's first project right here saves a trip to the
-    // Projects page and back — most people creating a team are about to
-    // start a project for it anyway.
-    if (addProject && projectName.trim()) {
-      const projectRes = await fetch("/api/projects", {
+    let team;
+    try {
+      team = await apiFetch("/api/teams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: projectName, description: projectDescription, teamId: team.id }),
+        body: JSON.stringify({ name }),
       });
-      const project = await projectRes.json();
-      setSubmitting(false);
-      resetForm();
-      router.push(`/dashboard/projects/${project.id}`);
+    } catch (err) {
+      if (isMounted()) setFormError(errorMessage(err, "Couldn't create the team. Please try again."));
+      if (isMounted()) setSubmitting(false);
       return;
     }
 
-    setSubmitting(false);
+    // The team now exists even if what follows fails — resetForm()/load()
+    // run regardless below so a retry can't submit this same team again,
+    // and any project failure is reported separately (as a notice, since
+    // the dialog is already gone) instead of being mislabeled as the team
+    // creation failing.
+    if (addProject && projectName.trim()) {
+      try {
+        const project = await apiFetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: projectName, description: projectDescription, teamId: team.id }),
+        });
+        if (!isMounted()) return;
+        resetForm();
+        router.push(`/dashboard/projects/${project.id}`);
+        return;
+      } catch (err) {
+        if (!isMounted()) return;
+        resetForm();
+        setNotice(
+          `"${team.name}" was created, but the project couldn't be created: ${errorMessage(err, "please try again from the Projects page.")}`
+        );
+        load();
+        setSubmitting(false);
+        return;
+      }
+    }
+
+    if (!isMounted()) return;
     resetForm();
     load();
+    setSubmitting(false);
   }
 
   return (
@@ -95,6 +138,12 @@ export default function TeamsPage() {
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
         Every project belongs to a team. To create a new project, you'll first need to manage a team.
       </Typography>
+
+      {notice && (
+        <Alert severity="warning" sx={{ mb: 3 }} onClose={() => setNotice("")}>
+          {notice}
+        </Alert>
+      )}
 
       <Dialog open={showForm} onClose={resetForm} fullWidth maxWidth="xs">
         <form onSubmit={handleCreate}>
@@ -135,6 +184,11 @@ export default function TeamsPage() {
                 onChange={(e) => setProjectDescription(e.target.value)}
               />
             </Collapse>
+            {formError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {formError}
+              </Alert>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2.5 }}>
             <Button onClick={resetForm} color="inherit">
@@ -155,6 +209,10 @@ export default function TeamsPage() {
             </Grid>
           ))}
         </Grid>
+      ) : loadError ? (
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
+          {loadError}
+        </Alert>
       ) : teams.length === 0 ? (
         <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
           <Typography color="text.secondary">You're not a member of any team yet.</Typography>
@@ -178,7 +236,7 @@ export default function TeamsPage() {
                       <AvatarGroup max={5} sx={{ justifyContent: "flex-end" }}>
                         {t.members.map((m) => (
                           <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
-                            {m.name.slice(0, 1)}
+                            {avatarInitial(m.name)}
                           </Avatar>
                         ))}
                       </AvatarGroup>
