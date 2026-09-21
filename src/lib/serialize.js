@@ -26,7 +26,7 @@ export function toTeamDTO(team, pendingInvitations = null) {
     name: team.name,
     manager: toUserDTO(team.manager),
     members: (team.members || []).map(toUserDTO),
-    ...(pendingInvitations ? { pendingInvitations: pendingInvitations.map(toInvitationDTO) } : {}),
+    ...(Array.isArray(pendingInvitations) ? { pendingInvitations: pendingInvitations.map(toInvitationDTO) } : {}),
   };
 }
 

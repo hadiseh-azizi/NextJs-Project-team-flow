@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 
 html,
 body {
@@ -17,14 +17,14 @@ body {
    form controls, scrollbars, etc. which color scheme to render in. */
 html[data-theme-mode="light"] {
   color-scheme: light;
-  background-color: #FAFAF6;
+  background-color: #fafaf6;
 }
 html[data-theme-mode="dark"] {
   color-scheme: dark;
-  background-color: #1A1814;
+  background-color: #1a1814;
 }
 html[data-theme-mode="dark"] body {
-  background-color: #1A1814;
+  background-color: #1a1814;
 }
 
 /* Applied to <html> for ~300ms right when the dark/light toggle is
@@ -59,4 +59,11 @@ html[data-theme-mode="dark"] body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+html[data-theme-mode="light"] body {
+  color: #1e1b16;
+}
+html[data-theme-mode="dark"] body {
+  color: #f2efe8;
 }

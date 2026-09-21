@@ -1,3 +1,93 @@
+# Dashboard Chart Fix - Recharts / React 19 Incompatibility
+
+Scope: dependency fix for the Dashboard "Project progress" chart only
+(`package.json`, `package-lock.json`). No source, layout, styling, theme,
+routing, auth, API or data-logic changes.
+
+**Root cause.** Next.js 15's App Router does not use the `react` package in
+`node_modules` (18.3.1); it runs its own vendored React 19 canary. Recharts
+2.12.7 only supports React <= 18 and depends on `react-is@16`, which does
+not recognise React 19 elements (`Symbol(react.transitional.element)`).
+`ResponsiveContainer` filters its children with `isElement()`, so it never
+passed a width/height to `BarChart`; `BarChart` returned `null` and the
+container rendered empty, with no console error. A second React 19
+incompatibility sat behind it: the React 19 JSX runtime no longer merges
+`defaultProps` into elements, so `Bar`'s `minPointSize` (and `XAxis`'s
+`xAxisId`/`type`) were `undefined` - the source of
+`TypeError: minPointSize is not a function` when a Bar is rendered under
+React 19.
+
+**Correction to the previous entry ("Dashboard Chart Hardening").** That
+entry concluded the chart "rendered correctly with well-formed data". That
+was true only under React 18 in jsdom, which is not the runtime the app
+uses under Next 15. The data path it traced (queries -> `toProjectDTO()` ->
+`ProgressChart`) was and remains correct; the defect was in the rendering
+layer. The earlier entry is left as written.
+
+**Change.**
+- `recharts` `2.12.7` -> `2.15.4` (exact pin; still Recharts 2.x, same API,
+  no chart code touched). 2.15.x declares React 19 support.
+- `overrides`: added `"recharts": { "react-is": "19.2.8" }`, scoped to
+  Recharts' own dependency so it recognises React 19 elements. Every other
+  package keeps its existing `react-is` copy.
+
+**Verified now.** `npm ci` (clean), `npm audit` (0 vulnerabilities),
+`npm run lint` (clean), `npm run build` (succeeds), full manual suite
+(20 files, 201 passed, 0 failed). In real headless Chromium against both a
+`next build`/`next start` production build (SSR + hydration) and `next dev`
+(StrictMode), using the real `toProjectDTO`, theme and components: with data
+the chart renders bars of the correct heights (75% / 25% / 100%), light and
+dark mode colours are correct including a live switch on a mounted chart,
+tooltip shows the value, empty project list shows the existing empty state,
+a 375px viewport reflows, and the console is clean. Before the fix, the same
+production build rendered an empty chart container.
+
+**Not verifiable in the sandbox.** A live-Atlas load of the real
+`/dashboard` route (needs MongoDB + a session): verification used an
+identical JSX tree fed by the real `toProjectDTO()` with generated data, in
+a throwaway route that is not part of this release. Google Fonts were
+blocked in the sandbox, so fallback fonts were used.
+
+**Observed, not changed (out of scope).**
+- In dark mode the `h4` "Overview" heading computed to the light-mode ink
+  colour (`rgb(30,27,22)`) in the test build while `h5`/`h6` were correct.
+  Not caused by this change; worth checking separately.
+- On very narrow screens Recharts hides some x-axis labels to avoid overlap.
+
+# Dashboard Chart Hardening
+
+Scope: `ProgressChart` only (`src/components/ProgressChart.jsx`). No
+layout, styling, theme, routing, auth, API or Recharts changes.
+
+**Finding.** The dashboard's data path (Mongoose queries in
+`dashboard/page.jsx` → `toProjectDTO()` → `ProgressChart`) was traced
+end to end and the field names and aggregation are consistent: the
+chart reads `columns[].id`/`isDoneColumn` and `tasks[].columnId`, which
+is exactly what `toColumnDTO()`/`toTaskDTO()` emit, and progress is
+computed from real task/column data. With well-formed data the chart
+rendered correctly. The one confirmed defect: `ProgressChart` threw a
+`TypeError` during render if `projects` was missing, or any project
+lacked `tasks`, `columns` or `name`. Because it is a client component
+that crash takes down the whole dashboard, not just the chart.
+
+**Change.** The chart-data mapping now treats a missing `projects`
+prop, non-array `tasks`/`columns`, or a missing `name` as "none" (the
+name falls back to "Untitled"). Output for well-formed data is
+unchanged. No data is invented: a project with no tasks still plots 0%,
+and an empty project list still shows the existing empty-state message.
+
+**Verified now:** `npm run lint` (clean), `npm audit` (0
+vulnerabilities), `npm run build` (succeeds, run with placeholder env
+vars), and the full manual suite (20 files, 0 failed). The component
+itself was exercised with an out-of-tree jsdom harness (not shipped;
+this repo has no DOM test tooling, see `__manual_test__/README.md`):
+valid data, empty list, project with no tasks, no done column flagged,
+missing optional fields, and missing `projects` prop, each in light and
+dark mode, plus a live light-to-dark switch on a mounted chart.
+
+**Not verifiable in the sandbox:** a real browser render (ResponsiveContainer
+sizing against the actual layout) and a live-Atlas dashboard load.
+
 # Final Security Patch — Nodemailer 9.1.1
 
 Scope: dependency-only security patch. Updated `nodemailer` from `9.0.5`

@@ -25,7 +25,7 @@
     "nodemailer": "9.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "recharts": "2.12.7"
+    "recharts": "2.15.4"
   },
   "devDependencies": {
     "@babel/core": "8.0.1",
@@ -39,6 +39,9 @@
   },
   "overrides": {
     "nodemailer": "9.1.1",
-    "postcss": "8.5.26"
+    "postcss": "8.5.26",
+    "recharts": {
+      "react-is": "19.2.8"
+    }
   }
 }

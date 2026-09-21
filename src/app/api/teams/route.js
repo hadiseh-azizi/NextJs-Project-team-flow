@@ -24,7 +24,7 @@ export async function GET() {
     .sort({ createdAt: -1 })
     .lean();
 
-  return NextResponse.json(teams.map(toTeamDTO));
+  return NextResponse.json(teams.map((team) => toTeamDTO(team)));
 }
 
 // Creating a team makes the current user its manager. The manager is also
