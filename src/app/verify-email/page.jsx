@@ -3,9 +3,8 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Box, Paper, Typography, Button, CircularProgress, Alert } from "@mui/material";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
-import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline";
+import { Box, Typography, Button, CircularProgress, Alert } from "@mui/material";
+import AuthShell from "@/components/AuthShell";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
 
@@ -48,26 +47,17 @@ function VerifyEmailInner() {
   }, [searchParams]);
 
   return (
-    <Paper variant="outlined" sx={{ width: "100%", maxWidth: 400, p: 4, textAlign: "center" }}>
-      <Typography
-        component={Link}
-        href="/"
-        sx={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "1.1rem", textDecoration: "none", color: "text.primary", display: "block", mb: 3 }}
-      >
-        TeamFlow<Box component="span" sx={{ color: "primary.main" }}>.</Box>
-      </Typography>
-
+    <>
       {status === "verifying" && (
-        <>
-          <CircularProgress sx={{ mb: 2 }} />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }} role="status">
+          <CircularProgress size={20} aria-hidden />
           <Typography color="text.secondary">Verifying your email...</Typography>
-        </>
+        </Box>
       )}
 
       {status === "success" && (
         <>
-          <CheckCircleOutlineIcon color="success" sx={{ fontSize: 48, mb: 1 }} />
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+          <Typography variant="h5" component="h1" sx={{ mb: 1.5 }}>
             Email verified
           </Typography>
           <Typography color="text.secondary" sx={{ mb: 3 }}>
@@ -81,37 +71,27 @@ function VerifyEmailInner() {
 
       {status === "error" && (
         <>
-          <ErrorOutlineIcon color="error" sx={{ fontSize: 48, mb: 1 }} />
-          <Typography variant="h6" fontWeight={700} sx={{ mb: 1 }}>
+          <Typography variant="h5" component="h1" sx={{ mb: 2 }}>
             Verification failed
           </Typography>
-          <Alert severity="error" sx={{ mb: 3, textAlign: "left" }}>
+          <Alert severity="error" sx={{ mb: 3 }}>
             {error}
           </Alert>
-          <Button component={Link} href="/login" variant="outlined" fullWidth>
+          <Button component={Link} href="/login" variant="outlined" color="inherit" fullWidth size="large">
             Back to sign in
           </Button>
         </>
       )}
-    </Paper>
+    </>
   );
 }
 
 export default function VerifyEmailPage() {
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 2,
-        bgcolor: "background.default",
-      }}
-    >
+    <AuthShell>
       <Suspense fallback={null}>
         <VerifyEmailInner />
       </Suspense>
-    </Box>
+    </AuthShell>
   );
 }

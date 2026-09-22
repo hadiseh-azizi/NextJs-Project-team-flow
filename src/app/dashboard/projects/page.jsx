@@ -5,12 +5,13 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
-  Box, Typography, Button, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, CircularProgress, Alert, Skeleton,
+  Box, Button, Dialog, DialogTitle, DialogContent, DialogActions,
+  MenuItem, CircularProgress, Alert, Skeleton, Link as MuiLink,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
 import ProjectCard from "@/components/ProjectCard";
-import FadeInStagger from "@/components/FadeInStagger";
+import PageHeader from "@/components/PageHeader";
+import EmptyState from "@/components/EmptyState";
+import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
@@ -97,58 +98,52 @@ function ProjectsPageInner() {
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 4, flexWrap: "wrap", gap: 2 }}>
-        <Box>
-          <Typography variant="overline" color="primary" fontWeight={700}>
-            Projects
-          </Typography>
-          <Typography variant="h4" fontWeight={700}>
-            All my projects
-          </Typography>
-        </Box>
-        {teamsIManage.length > 0 && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setShowForm(true)}>
-            New project
-          </Button>
-        )}
-      </Box>
+      <PageHeader
+        title="Projects"
+        description="Each project is a board that belongs to one team."
+        actions={
+          teamsIManage.length > 0 && (
+            <Button variant="contained" onClick={() => setShowForm(true)}>
+              New project
+            </Button>
+          )
+        }
+      />
 
-      <Dialog open={showForm} onClose={() => setShowForm(false)} fullWidth maxWidth="sm">
+      <Dialog open={showForm} onClose={() => setShowForm(false)} fullWidth maxWidth="xs">
         <form onSubmit={handleCreate}>
-          <DialogTitle sx={{ fontWeight: 700 }}>New project</DialogTitle>
+          <DialogTitle>New project</DialogTitle>
           <DialogContent>
             {teamsIManage.length === 0 ? (
               <Alert severity="info" sx={{ mt: 1 }}>
                 To create a project, you need to manage a team. Head over to the{" "}
-                <Link href="/dashboard/teams" style={{ color: "inherit", fontWeight: 700 }}>
+                <MuiLink component={Link} href="/dashboard/teams" color="inherit" sx={{ fontWeight: 600 }}>
                   Teams
-                </Link>{" "}
+                </MuiLink>{" "}
                 page and create one.
               </Alert>
             ) : (
               <>
-                <TextField
+                <Field
                   autoFocus
                   label="Project name"
-                  fullWidth
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  sx={{ mb: 2, mt: 1 }}
+                  sx={{ mb: 2.5, mt: 1 }}
                 />
-                <TextField
-                  label="Description (optional)"
-                  fullWidth
+                <Field
+                  label="Description"
+                  optional
                   multiline
-                  rows={2}
+                  rows={3}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  sx={{ mb: 2 }}
+                  sx={{ mb: 2.5 }}
                 />
-                <TextField
+                <Field
                   select
                   label="Team"
-                  fullWidth
                   required
                   value={teamId}
                   onChange={(e) => setTeamId(e.target.value)}
@@ -159,16 +154,16 @@ function ProjectsPageInner() {
                       {t.name}
                     </MenuItem>
                   ))}
-                </TextField>
+                </Field>
                 {formError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
+                  <Alert severity="error" sx={{ mt: 2.5 }}>
                     {formError}
                   </Alert>
                 )}
               </>
             )}
           </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <DialogActions>
             <Button onClick={() => setShowForm(false)} color="inherit">
               Cancel
             </Button>
@@ -182,31 +177,52 @@ function ProjectsPageInner() {
       </Dialog>
 
       {loading ? (
-        <Grid container spacing={2}>
+        <Box aria-busy="true" aria-label="Loading projects">
           {[0, 1, 2].map((i) => (
-            <Grid item xs={12} md={6} lg={4} key={i}>
-              <Skeleton variant="rounded" height={148} sx={{ borderRadius: 3 }} />
-            </Grid>
+            <Box key={i} sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider", display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 200px" }, columnGap: 6, rowGap: 1.5 }}>
+              <Box>
+                <Skeleton variant="text" width="40%" height={24} />
+                <Skeleton variant="text" width="22%" height={18} />
+              </Box>
+              <Box>
+                <Skeleton variant="rounded" height={4} sx={{ mt: 1 }} />
+                <Skeleton variant="text" width="45%" height={18} />
+              </Box>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       ) : loadError ? (
         <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
           {loadError}
         </Alert>
       ) : projects.length === 0 ? (
-        <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
-          <Typography color="text.secondary">You haven't created any projects yet.</Typography>
-        </Box>
+        teamsIManage.length > 0 ? (
+          <EmptyState
+            title="No projects yet"
+            description="Create a project to give your team a board to work from."
+            action={
+              <Button variant="contained" onClick={() => setShowForm(true)}>
+                New project
+              </Button>
+            }
+          />
+        ) : (
+          <EmptyState
+            title="No projects yet"
+            description="Projects belong to teams. Create a team first, then add a project to it."
+            action={
+              <Button component={Link} href="/dashboard/teams" variant="contained">
+                Go to teams
+              </Button>
+            }
+          />
+        )
       ) : (
-        <Grid container spacing={2}>
-          {projects.map((p, i) => (
-            <Grid item xs={12} md={6} lg={4} key={p.id}>
-              <FadeInStagger index={i}>
-                <ProjectCard project={p} />
-              </FadeInStagger>
-            </Grid>
+        <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" }}>
+          {projects.map((p) => (
+            <ProjectCard key={p.id} project={p} />
           ))}
-        </Grid>
+        </Box>
       )}
     </Box>
   );
@@ -217,7 +233,7 @@ export default function ProjectsPage() {
     <Suspense
       fallback={
         <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress />
+          <CircularProgress size={28} aria-label="Loading" />
         </Box>
       }
     >

@@ -5,10 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
-  Box, Typography, Button, Stack, Chip, Skeleton, Grid, Alert,
+  Box, Typography, Button, Skeleton, Alert, LinearProgress, Avatar, AvatarGroup, Tooltip,
 } from "@mui/material";
-import GroupsIcon from "@mui/icons-material/Groups";
-import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
+import PageHeader from "@/components/PageHeader";
+import { useThemeMode } from "@/components/ThemeModeContext";
+import { pastelForString } from "@/lib/pastelColor";
+import { avatarInitial } from "@/lib/avatarInitial";
 import KanbanBoard from "@/components/KanbanBoard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
@@ -18,6 +20,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
   const { data: session } = useSession();
+  const { mode } = useThemeMode();
   const isMounted = useIsMounted();
   const nextRequest = useLatestRequest();
   const [project, setProject] = useState(null);
@@ -81,17 +84,15 @@ export default function ProjectDetailPage() {
 
   if (!project) {
     return (
-      <Box>
-        <Skeleton variant="text" width={80} height={20} />
-        <Skeleton variant="text" width="45%" height={48} sx={{ mb: 1 }} />
-        <Skeleton variant="text" width="65%" height={24} sx={{ mb: 3 }} />
-        <Grid container spacing={2}>
+      <Box aria-busy="true" aria-label="Loading project">
+        <Skeleton variant="text" width={64} height={20} />
+        <Skeleton variant="text" width="40%" height={44} />
+        <Skeleton variant="text" width="60%" height={22} sx={{ mb: 3 }} />
+        <Box sx={{ display: "flex", gap: 2, overflow: "hidden" }}>
           {[0, 1, 2].map((i) => (
-            <Grid item xs={12} md={4} key={i}>
-              <Skeleton variant="rounded" height={340} sx={{ borderRadius: 3 }} />
-            </Grid>
+            <Skeleton key={i} variant="rounded" height={280} sx={{ flex: "0 0 288px", borderRadius: 2 }} />
           ))}
-        </Grid>
+        </Box>
       </Box>
     );
   }
@@ -107,63 +108,57 @@ export default function ProjectDetailPage() {
     ...project.team.members.filter((m) => m.id !== project.manager.id),
   ];
 
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 2, mb: 3 }}>
-        <Box>
-          <Typography variant="overline" color="primary" fontWeight={700}>
-            Project
-          </Typography>
-          <Typography variant="h4" fontWeight={700}>
-            {project.name}
-          </Typography>
-          {project.description && (
-            <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-              {project.description}
-            </Typography>
-          )}
-          <Typography variant="caption" color="text.secondary" fontFamily="monospace" sx={{ mt: 1, display: "block" }}>
-            {done}/{total} tasks done — {total ? Math.round((done / total) * 100) : 0}%
+      <PageHeader
+        back={{ href: "/dashboard/projects", label: "Projects" }}
+        title={project.name}
+        description={project.description}
+        sx={{ mb: 3 }}
+        actions={
+          <>
+            <Button component={Link} href={`/dashboard/teams/${project.team.id}`} variant="outlined" color="inherit">
+              Team: {project.team.name}
+            </Button>
+            {isManager && (
+              <Button color="error" onClick={() => setConfirmDelete(true)}>
+                Delete project
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 4, rowGap: 1.5, mb: 3 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+          <LinearProgress
+            variant="determinate"
+            value={pct}
+            color={pct === 100 ? "success" : "primary"}
+            aria-label="Project progress"
+            sx={{ width: 140 }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
+            {done} of {total} tasks done
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button
-            component={Link}
-            href={`/dashboard/teams/${project.team.id}`}
-            variant="outlined"
-            startIcon={<GroupsIcon />}
-          >
-            Team: {project.team.name}
-          </Button>
-          {isManager && (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<DeleteOutlineIcon />}
-              onClick={() => setConfirmDelete(true)}
-            >
-              Delete project
-            </Button>
-          )}
-        </Stack>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
+          <AvatarGroup max={6} sx={{ "& .MuiAvatar-root": { width: 24, height: 24, fontSize: 11, borderColor: "background.default" } }}>
+            {assignableUsers.map((m) => (
+              <Tooltip key={m.id} title={m.id === project.manager.id ? `${m.name} (manager)` : m.name}>
+                <Avatar aria-label={m.name} sx={{ bgcolor: pastelForString(m.id, mode) }}>
+                  {avatarInitial(m.name)}
+                </Avatar>
+              </Tooltip>
+            ))}
+          </AvatarGroup>
+          <Typography variant="body2" color="text.secondary">
+            Managed by {project.manager.name}
+          </Typography>
+        </Box>
       </Box>
-
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 3 }}>
-        <Chip
-          label={`Project manager: ${project.manager.name}`}
-          size="small"
-          color="primary"
-          variant="outlined"
-        />
-        {project.team.members.map((m, i) => (
-          <Chip
-            key={m.id}
-            label={m.name}
-            size="small"
-            variant="outlined"
-          />
-        ))}
-      </Stack>
 
       <KanbanBoard
         projectId={project.id}

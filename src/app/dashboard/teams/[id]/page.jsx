@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
-  Box, Typography, Button, Stack, Chip, Avatar, TextField, Alert, CircularProgress, Skeleton,
+  Box, Typography, Button, Avatar, Alert, CircularProgress, Skeleton,
 } from "@mui/material";
-import PersonAddIcon from "@mui/icons-material/PersonAdd";
-import CloseIcon from "@mui/icons-material/Close";
-import ScheduleSendIcon from "@mui/icons-material/ScheduleSend";
+import PageHeader from "@/components/PageHeader";
+import Field from "@/components/FormField";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -132,112 +131,119 @@ export default function TeamDetailPage() {
 
   if (!team) {
     return (
-      <Box>
-        <Skeleton variant="text" width={60} height={20} />
-        <Skeleton variant="text" width="35%" height={48} sx={{ mb: 1 }} />
-        <Skeleton variant="text" width="25%" height={24} sx={{ mb: 3 }} />
-        <Stack direction="row" spacing={1}>
-          {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} variant="rounded" width={100} height={32} sx={{ borderRadius: 5 }} />
-          ))}
-        </Stack>
+      <Box aria-busy="true" aria-label="Loading team">
+        <Skeleton variant="text" width={64} height={20} />
+        <Skeleton variant="text" width="35%" height={44} />
+        <Skeleton variant="text" width="22%" height={22} sx={{ mb: 4 }} />
+        {[0, 1, 2].map((i) => (
+          <Box key={i} sx={{ display: "flex", alignItems: "center", gap: 1.5, py: 1.25 }}>
+            <Skeleton variant="circular" width={28} height={28} />
+            <Skeleton variant="text" width={140} height={22} />
+          </Box>
+        ))}
       </Box>
     );
   }
 
+  const rowSx = { display: "flex", alignItems: "center", gap: 1.5, py: 1.25, borderBottom: "1px solid", borderColor: "divider", minHeight: 52 };
+  const listSx = { listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" };
+  const hasInvites = isManager && team.pendingInvitations?.length > 0;
+
   return (
     <Box>
-      <Typography variant="overline" color="primary" fontWeight={700}>
-        Team
-      </Typography>
-      <Typography variant="h4" fontWeight={700} sx={{ mb: 1 }}>
-        {team.name}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Team manager: {team.manager.name}
-      </Typography>
+      <PageHeader
+        back={{ href: "/dashboard/teams", label: "Teams" }}
+        title={team.name}
+        description={`Managed by ${team.manager.name}`}
+      />
 
       {isManager && (
-        <Box
-          component="form"
-          onSubmit={handleInvite}
-          sx={{ display: "flex", gap: 2, alignItems: "flex-start", mb: 3, flexWrap: "wrap" }}
-        >
-          <TextField
+        <Box component="form" onSubmit={handleInvite} sx={{ display: "flex", gap: 1.5, alignItems: "flex-end", mb: 3, flexWrap: "wrap", maxWidth: 520 }}>
+          <Field
             label="New member's email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            size="small"
-            sx={{ width: { xs: "100%", sm: "auto" }, minWidth: { sm: 260 } }}
+            sx={{ flex: "1 1 240px" }}
           />
-          <Button type="submit" variant="contained" startIcon={<PersonAddIcon />} disabled={inviting} sx={{ width: { xs: "100%", sm: "auto" } }}>
+          <Button type="submit" variant="contained" disabled={inviting} sx={{ width: { xs: "100%", sm: "auto" } }}>
             {inviting ? "Adding..." : "Add member"}
           </Button>
         </Box>
       )}
       {error && (
-        <Alert severity="error" sx={{ mb: 3, maxWidth: 480 }}>
+        <Alert severity="error" sx={{ mb: 3, maxWidth: 520 }}>
           {error}
         </Alert>
       )}
       {success && (
-        <Alert severity="success" sx={{ mb: 3, maxWidth: 480 }} onClose={() => setSuccess("")}>
+        <Alert severity="success" sx={{ mb: 3, maxWidth: 520 }} onClose={() => setSuccess("")}>
           {success}
         </Alert>
       )}
 
-      <Typography variant="h6" fontWeight={700} gutterBottom>
-        Team members
-      </Typography>
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: isManager && team.pendingInvitations?.length > 0 ? 4 : 0 }}>
-        {team.members.map((m, i) => (
-          <Chip
-            key={m.id}
-            avatar={<Avatar sx={{ fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F2EFE8" : "#1E1B16" }}>{avatarInitial(m.name)}</Avatar>}
-            label={m.id === team.manager.id ? `${m.name} · Manager` : m.name}
-            variant="outlined"
-            color={m.id === team.manager.id ? "primary" : "default"}
-            onDelete={
-              isManager && m.id !== team.manager.id
-                ? () => {
+      <Box component="section" aria-labelledby="team-members-heading" sx={{ maxWidth: 520, mb: hasInvites ? 5 : 0 }}>
+        <Typography id="team-members-heading" variant="h6" component="h2" sx={{ mb: 1 }}>
+          Team members
+        </Typography>
+        <Box component="ul" sx={listSx}>
+          {team.members.map((m) => (
+            <Box component="li" key={m.id} sx={rowSx}>
+              <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode) }}>{avatarInitial(m.name)}</Avatar>
+              <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500, overflowWrap: "anywhere" }}>
+                {m.name}
+                {m.id === team.manager.id && (
+                  <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1, fontWeight: 400 }}>
+                    Manager
+                  </Typography>
+                )}
+              </Typography>
+              {isManager && m.id !== team.manager.id && (
+                <Button
+                  size="small"
+                  color="error"
+                  aria-label={`Remove ${m.name} from the team`}
+                  onClick={() => {
                     setRemoveError("");
                     setConfirmRemove(m);
-                  }
-                : undefined
-            }
-            deleteIcon={<CloseIcon titleAccess={`Remove ${m.name} from the team`} />}
-          />
-        ))}
-      </Stack>
+                  }}
+                >
+                  Remove
+                </Button>
+              )}
+            </Box>
+          ))}
+        </Box>
+      </Box>
 
-      {isManager && team.pendingInvitations?.length > 0 && (
-        <Box>
-          <Typography variant="h6" fontWeight={700} gutterBottom>
+      {hasInvites && (
+        <Box component="section" aria-labelledby="team-invites-heading" sx={{ maxWidth: 520 }}>
+          <Typography id="team-invites-heading" variant="h6" component="h2">
             Pending invitations
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
             These people have been invited by email but haven't created an account yet.
           </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {team.pendingInvitations.map((inv, i) => (
-              <Chip
-                key={inv.id}
-                icon={<ScheduleSendIcon sx={{ fontSize: 16 }} />}
-                label={inv.email}
-                variant="outlined"
-                onDelete={cancelingInviteId ? undefined : () => cancelInvitation(inv.id)}
-                deleteIcon={
-                  cancelingInviteId === inv.id ? (
-                    <CircularProgress size={14} aria-label="Cancelling…" />
-                  ) : (
-                    <CloseIcon titleAccess={`Cancel invitation to ${inv.email}`} />
-                  )
-                }
-              />
+          <Box component="ul" sx={listSx}>
+            {team.pendingInvitations.map((inv) => (
+              <Box component="li" key={inv.id} sx={rowSx}>
+                <Typography variant="body2" sx={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
+                  {inv.email}
+                </Typography>
+                <Button
+                  size="small"
+                  color="inherit"
+                  aria-label={`Cancel invitation to ${inv.email}`}
+                  disabled={!!cancelingInviteId}
+                  onClick={() => cancelInvitation(inv.id)}
+                  sx={{ color: "text.secondary" }}
+                >
+                  {cancelingInviteId === inv.id ? <CircularProgress size={14} aria-label="Cancelling…" /> : "Cancel invitation"}
+                </Button>
+              </Box>
             ))}
-          </Stack>
+          </Box>
         </Box>
       )}
 

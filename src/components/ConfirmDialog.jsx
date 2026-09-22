@@ -5,7 +5,7 @@ import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, B
 export default function ConfirmDialog({ open, title, message, confirmLabel = "Delete", onConfirm, onClose, loading = false, error = "" }) {
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ fontWeight: 700 }}>{title}</DialogTitle>
+      <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ overflowWrap: "anywhere" }}>{message}</DialogContentText>
         {error && (
@@ -14,7 +14,7 @@ export default function ConfirmDialog({ open, title, message, confirmLabel = "De
           </Alert>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2.5 }}>
+      <DialogActions>
         {/* Cancel, not the destructive action, gets the initial focus —
             so pressing Enter right after the dialog opens can't confirm
             a delete by reflex. */}

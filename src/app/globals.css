@@ -1,9 +1,13 @@
-@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 html,
 body {
   padding: 0;
   margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 * {
@@ -15,16 +19,34 @@ body {
    so the background is already correct on first paint — CssBaseline then
    takes over once MUI mounts, with no visible handoff. Also tells native
    form controls, scrollbars, etc. which color scheme to render in. */
+/* Background AND text color are pinned here, keyed off the attribute the
+   blocking script sets before paint — not left to whichever of MUI's two
+   (light-theme SSR, dark-theme client) global stylesheets happens to be
+   inserted last. That insertion order isn't guaranteed, so anything that
+   relies on inheriting color from <body> (most text in the app) needs a
+   rule with real specificity to pin it, exactly like background-color
+   already had to be pinned below. */
 html[data-theme-mode="light"] {
   color-scheme: light;
-  background-color: #fafaf6;
+  background-color: #FAFAF6;
 }
 html[data-theme-mode="dark"] {
   color-scheme: dark;
-  background-color: #1a1814;
+  background-color: #1A1814;
+}
+/* !important is deliberate and narrow: MUI's CssBaseline inserts a stale
+   server-rendered `body{...}` rule (baked from the request's initial
+   "light" render) that a corrected client-side global-style insertion
+   does not reliably land after in the cascade, so equal-specificity,
+   later-wins rules can end up picking the wrong one. These two
+   declarations are the only ones in the app that override that. */
+html[data-theme-mode="light"] body {
+  background-color: #FAFAF6 !important;
+  color: #1E1B16 !important;
 }
 html[data-theme-mode="dark"] body {
-  background-color: #1a1814;
+  background-color: #1A1814 !important;
+  color: #F2EFE8 !important;
 }
 
 /* Applied to <html> for ~300ms right when the dark/light toggle is
@@ -37,15 +59,6 @@ html[data-theme-mode="dark"] body {
     background-color 0.2s ease,
     border-color 0.2s ease,
     color 0.2s ease !important;
-}
-
-@keyframes ff-shimmer {
-  from {
-    background-position: -200% 0;
-  }
-  to {
-    background-position: 200% 0;
-  }
 }
 
 /* Respect the OS-level "reduce motion" setting: the theme crossfade and

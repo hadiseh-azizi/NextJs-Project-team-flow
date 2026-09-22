@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Box, Typography, Button, Grid, Card, CardActionArea, CardContent, Dialog, DialogTitle,
-  DialogContent, DialogActions, TextField, CircularProgress, AvatarGroup, Avatar,
+  Box, Typography, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, AvatarGroup, Avatar,
   Checkbox, FormControlLabel, Collapse, Divider, Skeleton, Alert,
 } from "@mui/material";
-import AddIcon from "@mui/icons-material/Add";
+import PageHeader from "@/components/PageHeader";
+import EmptyState from "@/components/EmptyState";
+import Field from "@/components/FormField";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
-import FadeInStagger from "@/components/FadeInStagger";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
@@ -121,23 +122,15 @@ export default function TeamsPage() {
 
   return (
     <Box>
-      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 4, flexWrap: "wrap", gap: 2 }}>
-        <Box>
-          <Typography variant="overline" color="primary" fontWeight={700}>
-            Teams
-          </Typography>
-          <Typography variant="h4" fontWeight={700}>
-            My teams
-          </Typography>
-        </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setShowForm(true)}>
-          New team
-        </Button>
-      </Box>
-
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Every project belongs to a team. To create a new project, you'll first need to manage a team.
-      </Typography>
+      <PageHeader
+        title="Teams"
+        description="Every project belongs to a team. To create a project, you'll first need to manage a team."
+        actions={
+          <Button variant="contained" onClick={() => setShowForm(true)}>
+            New team
+          </Button>
+        }
+      />
 
       {notice && (
         <Alert severity="warning" sx={{ mb: 3 }} onClose={() => setNotice("")}>
@@ -147,50 +140,48 @@ export default function TeamsPage() {
 
       <Dialog open={showForm} onClose={resetForm} fullWidth maxWidth="xs">
         <form onSubmit={handleCreate}>
-          <DialogTitle sx={{ fontWeight: 700 }}>New team</DialogTitle>
+          <DialogTitle>New team</DialogTitle>
           <DialogContent>
-            <TextField
+            <Field
               autoFocus
               label="Team name"
-              fullWidth
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              sx={{ mt: 1, mb: 1 }}
+              sx={{ mt: 1 }}
             />
 
             <FormControlLabel
-              control={<Checkbox checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />}
+              control={<Checkbox size="small" checked={addProject} onChange={(e) => setAddProject(e.target.checked)} />}
               label="Also create a project for this team"
-              sx={{ mt: 0.5 }}
+              sx={{ mt: 1.5, ml: -0.75 }}
             />
 
             <Collapse in={addProject}>
               <Divider sx={{ my: 1.5 }} />
-              <TextField
+              <Field
                 label="Project name"
-                fullWidth
                 required={addProject}
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
-                sx={{ mb: 2 }}
+                sx={{ mb: 2.5 }}
               />
-              <TextField
-                label="Description (optional)"
-                fullWidth
+              <Field
+                label="Description"
+                optional
                 multiline
-                rows={2}
+                rows={3}
                 value={projectDescription}
                 onChange={(e) => setProjectDescription(e.target.value)}
               />
             </Collapse>
             {formError && (
-              <Alert severity="error" sx={{ mt: 2 }}>
+              <Alert severity="error" sx={{ mt: 2.5 }}>
                 {formError}
               </Alert>
             )}
           </DialogContent>
-          <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <DialogActions>
             <Button onClick={resetForm} color="inherit">
               Cancel
             </Button>
@@ -202,51 +193,70 @@ export default function TeamsPage() {
       </Dialog>
 
       {loading ? (
-        <Grid container spacing={2}>
+        <Box aria-busy="true" aria-label="Loading teams">
           {[0, 1, 2].map((i) => (
-            <Grid item xs={12} md={6} lg={4} key={i}>
-              <Skeleton variant="rounded" height={128} sx={{ borderRadius: 3 }} />
-            </Grid>
+            <Box key={i} sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
+              <Skeleton variant="text" width="30%" height={24} />
+              <Skeleton variant="text" width="18%" height={18} />
+            </Box>
           ))}
-        </Grid>
+        </Box>
       ) : loadError ? (
         <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
           {loadError}
         </Alert>
       ) : teams.length === 0 ? (
-        <Box sx={{ border: "1px dashed", borderColor: "grey.300", borderRadius: 2, py: 6, textAlign: "center" }}>
-          <Typography color="text.secondary">You're not a member of any team yet.</Typography>
-        </Box>
+        <EmptyState
+          title="No teams yet"
+          description="Create a team to invite people and start adding projects."
+          action={
+            <Button variant="contained" onClick={() => setShowForm(true)}>
+              New team
+            </Button>
+          }
+        />
       ) : (
-        <Grid container spacing={2}>
-          {teams.map((t, i) => (
-            <Grid item xs={12} md={6} lg={4} key={t.id}>
-              <FadeInStagger index={i}>
-                <Card variant="outlined">
-                  <CardActionArea component={Link} href={`/dashboard/teams/${t.id}`}>
-                    <CardContent>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                        <Typography variant="h6" fontWeight={700}>
-                          {t.name}
-                        </Typography>
-                      </Box>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                        Manager: {t.manager?.name}
-                      </Typography>
-                      <AvatarGroup max={5} sx={{ justifyContent: "flex-end" }}>
-                        {t.members.map((m) => (
-                          <Avatar key={m.id} sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
-                            {avatarInitial(m.name)}
-                          </Avatar>
-                        ))}
-                      </AvatarGroup>
-                    </CardContent>
-                  </CardActionArea>
-                </Card>
-              </FadeInStagger>
-            </Grid>
+        <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" }}>
+          {teams.map((t) => (
+            <Box component="li" key={t.id} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
+              <Box
+                component={Link}
+                href={`/dashboard/teams/${t.id}`}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 3,
+                  mx: -1.5,
+                  px: 1.5,
+                  py: 2,
+                  borderRadius: 1,
+                  color: "text.primary",
+                  textDecoration: "none",
+                  transition: "background-color .12s ease",
+                  "&:hover": { bgcolor: "action.hover" },
+                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
+                }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="subtitle1" noWrap>
+                    {t.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" noWrap>
+                    Managed by {t.manager?.name}
+                  </Typography>
+                </Box>
+                <AvatarGroup max={5} sx={{ flexShrink: 0, "& .MuiAvatar-root": { width: 26, height: 26, fontSize: 12, borderColor: "background.default" } }}>
+                  {t.members.map((m) => (
+                    <Avatar key={m.id} aria-label={m.name} sx={{ bgcolor: pastelForString(m.id, mode) }}>
+                      {avatarInitial(m.name)}
+                    </Avatar>
+                  ))}
+                </AvatarGroup>
+              </Box>
+            </Box>
           ))}
-        </Grid>
+        </Box>
       )}
     </Box>
   );

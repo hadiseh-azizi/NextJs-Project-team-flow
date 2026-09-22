@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography,
-  FormControl, InputLabel, Select, OutlinedInput, Checkbox, ListItemText, Chip,
+  FormControl, Select, OutlinedInput, Checkbox, ListItemText, Chip,
   List, ListItem, ListItemIcon, ListItemText as MuiListItemText, IconButton, Divider,
   CircularProgress, Alert, MenuItem, useMediaQuery,
 } from "@mui/material";
@@ -14,6 +14,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import ColorSwatchPicker from "@/components/ColorSwatchPicker";
+import { FieldLabel } from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 import {
@@ -202,10 +203,10 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle sx={{ fontWeight: 700, overflowWrap: "anywhere" }}>{task.title}</DialogTitle>
+      <DialogTitle sx={{ overflowWrap: "anywhere" }}>{task.title}</DialogTitle>
       <DialogContent>
         {task.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
             {task.description}
           </Typography>
         )}
@@ -216,19 +217,18 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           </Alert>
         )}
 
+        <FieldLabel id="edit-column-label" component="div">Column</FieldLabel>
         <FormControl fullWidth size="small" sx={{ mb: 2.5 }}>
-          <InputLabel id="edit-column-label">Column</InputLabel>
           <Select
             labelId="edit-column-label"
             value={columnId}
-            label="Column"
             onChange={(e) => saveColumn(e.target.value)}
           >
             {columns.map((c) => (
               <MenuItem key={c.id} value={c.id}>
                 {c.name}
                 {c.isDoneColumn && (
-                  <Typography component="span" variant="caption" color="success.main" sx={{ mr: 1 }}>
+                  <Typography component="span" variant="caption" color="success.main" sx={{ ml: 1 }}>
                     (final)
                   </Typography>
                 )}
@@ -237,22 +237,27 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           </Select>
         </FormControl>
 
-        <FormControl fullWidth sx={{ mb: 3 }}>
-          <InputLabel id="edit-assignees-label">Assignees</InputLabel>
+        <FieldLabel id="edit-assignees-label" component="div">Assignees</FieldLabel>
+        <FormControl fullWidth sx={{ mb: 2.5 }}>
           <Select
             labelId="edit-assignees-label"
             multiple
+            displayEmpty
             value={assigneeIds}
             onChange={(e) => saveAssignees(e.target.value)}
-            input={<OutlinedInput label="Assignees" />}
-            renderValue={(selected) => (
-              <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                {selected.map((id) => {
-                  const u = assignableUsers.find((u) => u.id === id);
-                  return <Chip key={id} label={u?.name} size="small" />;
-                })}
-              </Box>
-            )}
+            input={<OutlinedInput />}
+            renderValue={(selected) =>
+              selected.length === 0 ? (
+                <Typography component="span" variant="body2" color="text.secondary">Nobody</Typography>
+              ) : (
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                  {selected.map((id) => {
+                    const u = assignableUsers.find((u) => u.id === id);
+                    return <Chip key={id} label={u?.name} size="small" />;
+                  })}
+                </Box>
+              )
+            }
           >
             {assignableUsers.map((u) => (
               <MenuItem key={u.id} value={u.id}>
@@ -268,23 +273,22 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           )}
         </FormControl>
 
-        <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mb: 1 }}>
-          COLOR
-        </Typography>
+        <FieldLabel component="div">Color</FieldLabel>
         <Box sx={{ mb: 3 }}>
           <ColorSwatchPicker value={color} onChange={saveColor} />
         </Box>
 
-        <Divider sx={{ mb: 2 }} />
+        <Divider sx={{ mb: 2.5 }} />
 
         <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 0.5 }}>
-          <Typography variant="subtitle2" fontWeight={700}>
+          <Typography variant="h6" component="h3" sx={{ fontSize: "0.9375rem" }}>
             Attachments
           </Typography>
           <Button
             size="small"
+            color="primary"
             component="label"
-            startIcon={uploading ? <CircularProgress size={14} /> : <UploadFileIcon />}
+            startIcon={uploading ? <CircularProgress size={14} /> : <UploadFileIcon sx={{ fontSize: 18 }} />}
             disabled={uploading || task.attachments.length >= MAX_ATTACHMENTS_PER_TASK}
           >
             {uploading ? "Uploading..." : "Add file"}
@@ -292,7 +296,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           </Button>
         </Box>
 
-        <Typography variant="caption" color="text.disabled" sx={{ display: "block", mb: 1 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
           {ALLOWED_TYPES_SUMMARY} · up to {MAX_FILE_SIZE_MB}MB per file · {MAX_TOTAL_SIZE_MB}MB total per task
           {task.attachments.length > 0 && ` · ${task.attachments.length}/${MAX_ATTACHMENTS_PER_TASK} files`}
         </Typography>
@@ -304,7 +308,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         )}
 
         {task.attachments.length === 0 ? (
-          <Typography variant="caption" color="text.disabled">
+          <Typography variant="body2" color="text.secondary">
             No files attached yet.
           </Typography>
         ) : (
@@ -366,10 +370,9 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           </List>
         )}
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2.5, justifyContent: "space-between" }}>
+      <DialogActions sx={{ justifyContent: "space-between" }}>
         <Button
           color="error"
-          startIcon={<DeleteIcon />}
           onClick={() => {
             setDeleteTaskError("");
             setConfirmDeleteTask(true);
@@ -377,7 +380,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         >
           Delete task
         </Button>
-        <Button onClick={onClose} variant="contained">
+        <Button onClick={onClose} variant="outlined" color="inherit">
           Close
         </Button>
       </DialogActions>

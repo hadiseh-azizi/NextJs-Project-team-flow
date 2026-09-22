@@ -1,12 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Box, Paper, Typography, List, ListItemButton, ListItemText } from "@mui/material";
-import { alpha } from "@mui/material/styles";
+import { Box, Typography } from "@mui/material";
+import { formatDateOnly } from "@/lib/dateOnly";
+import { isOverdue, localTodayYmd } from "@/lib/dueStatus";
 
+// Three numbers that double as a switch: choosing one lists what is behind
+// it right underneath. "My open tasks" is open by default because it is the
+// one list that tells you what to do next.
 export default function OverviewStats({ projects, userId }) {
-  const [activeStat, setActiveStat] = useState(null);
+  const [activeStat, setActiveStat] = useState("open");
+  // Set after mount so server and client markup agree; overdue flags appear
+  // one frame later.
+  const [today, setToday] = useState(null);
+  useEffect(() => {
+    setToday(localTodayYmd());
+  }, []);
 
   const allTasks = projects.flatMap((p) => {
     const doneColumnIds = new Set(p.columns.filter((c) => c.isDoneColumn).map((c) => c.id));
@@ -18,12 +28,21 @@ export default function OverviewStats({ projects, userId }) {
     }));
   });
   const doneTasks = allTasks.filter((t) => t.isDone);
-  const myOpenTasks = allTasks.filter((t) => t.assignees.some((a) => a.id === userId) && !t.isDone);
+  // Soonest due date first; tasks without one keep their existing order at the end.
+  const myOpenTasks = allTasks
+    .filter((t) => t.assignees.some((a) => a.id === userId) && !t.isDone)
+    .map((t, i) => ({ t, i }))
+    .sort((a, b) => {
+      const ad = a.t.dueDate ? new Date(a.t.dueDate).getTime() : Infinity;
+      const bd = b.t.dueDate ? new Date(b.t.dueDate).getTime() : Infinity;
+      return ad === bd ? a.i - b.i : ad - bd;
+    })
+    .map(({ t }) => t);
 
   const stats = [
-    { key: "projects", label: "Active projects", value: projects.length },
-    { key: "done", label: "Tasks completed", value: `${doneTasks.length}/${allTasks.length}` },
     { key: "open", label: "My open tasks", value: myOpenTasks.length },
+    { key: "done", label: "Tasks completed", value: `${doneTasks.length}/${allTasks.length}` },
+    { key: "projects", label: "Active projects", value: projects.length },
   ];
 
   let items = [];
@@ -35,14 +54,20 @@ export default function OverviewStats({ projects, userId }) {
     items = doneTasks.map((t) => ({ id: t.id, primary: t.title, secondary: t.projectName, href: `/dashboard/projects/${t.projectId}` }));
     emptyLabel = "Nothing's been finished yet.";
   } else if (activeStat === "open") {
-    items = myOpenTasks.map((t) => ({ id: t.id, primary: t.title, secondary: t.projectName, href: `/dashboard/projects/${t.projectId}` }));
-    emptyLabel = "No open tasks — nice work!";
+    items = myOpenTasks.map((t) => ({
+      id: t.id,
+      primary: t.title,
+      secondary: t.projectName,
+      dueDate: t.dueDate,
+      href: `/dashboard/projects/${t.projectId}`,
+    }));
+    emptyLabel = "No open tasks assigned to you.";
   }
 
   return (
-    <Box sx={{ mb: 4 }}>
-      <Paper variant="outlined" sx={{ display: "flex", overflow: "hidden" }}>
-        {stats.map((s, i) => {
+    <Box>
+      <Box sx={{ display: "flex", gap: { xs: 2.5, sm: 4 }, borderBottom: "1px solid", borderColor: "divider" }}>
+        {stats.map((s) => {
           const active = activeStat === s.key;
           return (
             <Box
@@ -52,52 +77,108 @@ export default function OverviewStats({ projects, userId }) {
               onClick={() => setActiveStat(active ? null : s.key)}
               aria-pressed={active}
               aria-expanded={active}
-              sx={(theme) => ({
-                flex: 1,
+              aria-controls="overview-list"
+              sx={{
+                position: "relative",
                 textAlign: "left",
-                px: { xs: 2, sm: 3 },
-                py: 2.5,
+                p: 0,
+                pb: 1.5,
+                font: "inherit",
                 cursor: "pointer",
                 border: "none",
-                borderLeft: i > 0 ? `1px solid ${theme.palette.divider}` : "none",
-                bgcolor: active ? alpha(theme.palette.primary.main, 0.06) : "transparent",
-                transition: "background-color .15s",
-                "&:hover": { bgcolor: alpha(theme.palette.primary.main, active ? 0.1 : 0.04) },
-              })}
+                bgcolor: "transparent",
+                color: "text.primary",
+                "&::after": {
+                  content: '""',
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: -1,
+                  height: 2,
+                  bgcolor: "primary.main",
+                  opacity: active ? 1 : 0,
+                  transition: "opacity .12s ease",
+                },
+                "&:hover .stat-label": { color: "text.primary" },
+                "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 4, borderRadius: 0.5 },
+              }}
             >
-              <Typography variant="body2" sx={{ mb: 0.5, color: active ? "primary.main" : "text.secondary" }}>
-                {s.label}
-              </Typography>
-              <Typography variant="h5" fontWeight={700}>
+              <Typography
+                component="span"
+                sx={{ display: "block", fontFamily: "'Fraunces', Georgia, serif", fontWeight: 500, fontSize: { xs: "1.75rem", sm: "2.125rem" }, lineHeight: 1.1, letterSpacing: "-0.02em" }}
+              >
                 {s.value}
+              </Typography>
+              <Typography
+                className="stat-label"
+                component="span"
+                variant="body2"
+                sx={{ display: "block", mt: 0.5, color: active ? "text.primary" : "text.secondary", fontWeight: active ? 600 : 400, transition: "color .12s ease" }}
+              >
+                {s.label}
               </Typography>
             </Box>
           );
         })}
-      </Paper>
+      </Box>
 
-      {activeStat && (
-        <Paper variant="outlined" sx={{ mt: 1 }}>
-          {items.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ p: 3 }}>
+      <Box id="overview-list" sx={{ mt: 1 }}>
+        {activeStat &&
+          (items.length === 0 ? (
+            <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
               {emptyLabel}
             </Typography>
           ) : (
-            <List disablePadding>
-              {items.map((it, i) => (
-                <ListItemButton
-                  key={it.id}
-                  component={Link}
-                  href={it.href}
-                  divider={i < items.length - 1}
-                >
-                  <ListItemText primary={it.primary} secondary={it.secondary} />
-                </ListItemButton>
-              ))}
-            </List>
-          )}
-        </Paper>
-      )}
+            <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0 }}>
+              {items.map((it) => {
+                const overdue = activeStat === "open" && isOverdue(it.dueDate, today);
+                return (
+                  <Box component="li" key={it.id} sx={{ borderBottom: "1px solid", borderColor: "divider", "&:last-of-type": { borderBottom: "none" } }}>
+                    <Box
+                      component={Link}
+                      href={it.href}
+                      sx={{
+                        display: "flex",
+                        alignItems: "baseline",
+                        justifyContent: "space-between",
+                        gap: 2,
+                        mx: -1.5,
+                        px: 1.5,
+                        py: 1.25,
+                        borderRadius: 1,
+                        color: "text.primary",
+                        textDecoration: "none",
+                        transition: "background-color .12s ease",
+                        "&:hover": { bgcolor: "action.hover" },
+                        "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
+                      }}
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500, overflowWrap: "anywhere" }}>
+                          {it.primary}
+                        </Typography>
+                        {it.secondary && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: "block" }}>
+                            {it.secondary}
+                          </Typography>
+                        )}
+                      </Box>
+                      {it.dueDate && (
+                        <Typography
+                          variant="caption"
+                          sx={{ flexShrink: 0, color: overdue ? "error.main" : "text.secondary", fontWeight: overdue ? 600 : 400, fontVariantNumeric: "tabular-nums" }}
+                        >
+                          {overdue ? "Overdue " : "Due "}
+                          {formatDateOnly(it.dueDate, { month: "short", day: "numeric" })}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                );
+              })}
+            </Box>
+          ))}
+      </Box>
     </Box>
   );
 }

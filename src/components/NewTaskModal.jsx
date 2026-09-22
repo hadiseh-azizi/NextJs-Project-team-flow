@@ -3,11 +3,12 @@
 import { useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Button, MenuItem, Grid, Select, InputLabel, FormControl, Checkbox,
+  Button, MenuItem, Grid, Select, FormControl, Checkbox,
   ListItemText, Chip, Box, OutlinedInput, Typography, Alert, useMediaQuery,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import ColorSwatchPicker from "@/components/ColorSwatchPicker";
+import Field, { FieldLabel } from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
 
@@ -54,51 +55,55 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <form onSubmit={handleSubmit}>
-        <DialogTitle sx={{ fontWeight: 700 }}>
+        <DialogTitle>
           New task
           {columnName && (
-            <Typography variant="body2" color="text.secondary" fontWeight={400} sx={{ mt: 0.25 }}>
+            <Typography component="span" variant="body2" color="text.secondary" sx={{ display: "block", mt: 0.25, fontFamily: "'Plus Jakarta Sans', sans-serif", letterSpacing: 0, overflowWrap: "anywhere" }}>
               In column "{columnName}"
             </Typography>
           )}
         </DialogTitle>
         <DialogContent>
-          <TextField
+          <Field
             autoFocus
             label="Title"
-            fullWidth
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            sx={{ mb: 2, mt: 1 }}
+            sx={{ mb: 2.5, mt: 1 }}
           />
-          <TextField
-            label="Description (optional)"
-            fullWidth
+          <Field
+            label="Description"
+            optional
             multiline
-            rows={2}
+            rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            sx={{ mb: 2 }}
+            sx={{ mb: 2.5 }}
           />
           <Grid container spacing={2}>
             <Grid item xs={12} sm={7}>
+              <FieldLabel id="assignees-label" component="div" optional>Assignees</FieldLabel>
               <FormControl fullWidth>
-                <InputLabel id="assignees-label">Assignees</InputLabel>
                 <Select
                   labelId="assignees-label"
                   multiple
+                  displayEmpty
                   value={assigneeIds}
                   onChange={(e) => setAssigneeIds(e.target.value)}
-                  input={<OutlinedInput label="Assignees" />}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
-                      {selected.map((id) => {
-                        const u = assignableUsers.find((u) => u.id === id);
-                        return <Chip key={id} label={u?.name} size="small" />;
-                      })}
-                    </Box>
-                  )}
+                  input={<OutlinedInput />}
+                  renderValue={(selected) =>
+                    selected.length === 0 ? (
+                      <Typography component="span" variant="body2" color="text.secondary">Nobody</Typography>
+                    ) : (
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                        {selected.map((id) => {
+                          const u = assignableUsers.find((u) => u.id === id);
+                          return <Chip key={id} label={u?.name} size="small" />;
+                        })}
+                      </Box>
+                    )
+                  }
                 >
                   {assignableUsers.map((u) => (
                     <MenuItem key={u.id} value={u.id}>
@@ -110,28 +115,25 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={5}>
-              <TextField
+              <Field
                 type="date"
                 label="Due date"
-                fullWidth
-                InputLabelProps={{ shrink: true }}
+                optional
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
               />
             </Grid>
           </Grid>
 
-          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ display: "block", mt: 2.5, mb: 1 }}>
-            COLOR (OPTIONAL)
-          </Typography>
+          <FieldLabel component="div" optional sx={{ mt: 2.5 }}>Color</FieldLabel>
           <ColorSwatchPicker value={color} onChange={setColor} />
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <Alert severity="error" sx={{ mt: 2.5 }}>
               {error}
             </Alert>
           )}
         </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+        <DialogActions>
           <Button onClick={onClose} color="inherit" disabled={submitting}>
             Cancel
           </Button>

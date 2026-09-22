@@ -4,14 +4,14 @@
 // without anyone having to pick it. Light mode gets soft pastels; dark
 // mode gets the same hues shifted deep and muted instead of glowing.
 const PALETTE = [
-  { light: "#FBD5DD", dark: "#5C2B36" }, // rose
-  { light: "#FCE1C8", dark: "#5A3B22" }, // peach
-  { light: "#FBF0C0", dark: "#544B1D" }, // lemon
-  { light: "#D3F0DD", dark: "#234A34" }, // mint
-  { light: "#D6E9FB", dark: "#20395A" }, // sky
-  { light: "#E4DBF7", dark: "#3B2E56" }, // lavender
-  { light: "#EEE3D2", dark: "#4A3C28" }, // sand
-  { light: "#FCDCD8", dark: "#552B27" }, // coral
+  { light: "#F6D8DA", dark: "#5A2E35" }, // rose
+  { light: "#F8E0CA", dark: "#583B25" }, // peach
+  { light: "#F4EBC3", dark: "#524A22" }, // lemon
+  { light: "#D6EBDB", dark: "#264636" }, // mint
+  { light: "#D7E6F0", dark: "#243B50" }, // sky
+  { light: "#E5DEEE", dark: "#3F3453" }, // lavender
+  { light: "#EDE4D3", dark: "#4A3C28" }, // sand
+  { light: "#F7DAD2", dark: "#552D28" }, // coral
 ];
 
 function hashString(str) {

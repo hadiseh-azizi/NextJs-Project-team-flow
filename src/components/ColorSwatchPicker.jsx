@@ -8,14 +8,13 @@ import { useThemeMode } from "@/components/ThemeModeContext";
 // Shared reset + focus style so these read as plain circular swatches
 // while still being real, keyboard-operable <button> elements.
 const swatchBaseSx = {
-  width: 26,
-  height: 26,
+  width: 24,
+  height: 24,
   borderRadius: "50%",
   p: 0,
   cursor: "pointer",
   font: "inherit",
-  transition: "transform .1s",
-  "&:hover": { transform: "scale(1.1)" },
+  transition: "box-shadow .12s ease, border-color .12s ease",
   "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
 };
 
@@ -34,12 +33,13 @@ export default function ColorSwatchPicker({ value, onChange }) {
           sx={{
             ...swatchBaseSx,
             border: "1.5px solid",
-            borderColor: !value ? "primary.main" : "divider",
+            borderColor: !value ? "primary.main" : "line.strong",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             bgcolor: "transparent",
-            color: "text.disabled",
+            color: "text.secondary",
+            "&:hover": { borderColor: "text.secondary" },
           }}
         >
           <CloseIcon sx={{ fontSize: 14 }} />
@@ -58,7 +58,8 @@ export default function ColorSwatchPicker({ value, onChange }) {
               bgcolor: mode === "dark" ? c.dark : c.light,
               border: "2px solid",
               borderColor: value === c.key ? "primary.main" : "transparent",
-              boxShadow: value === c.key ? "none" : "inset 0 0 0 1px rgba(0,0,0,0.08)",
+              boxShadow: "inset 0 0 0 1px rgba(30,27,22,0.14)",
+              "&:hover": { borderColor: value === c.key ? "primary.main" : "line.strong" },
             }}
           />
         </Tooltip>

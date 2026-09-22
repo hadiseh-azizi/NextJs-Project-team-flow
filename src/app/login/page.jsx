@@ -4,7 +4,9 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Box, Paper, Typography, TextField, Button, Alert } from "@mui/material";
+import { Typography, Button, Alert, Link as MuiLink } from "@mui/material";
+import AuthShell from "@/components/AuthShell";
+import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
 
@@ -66,87 +68,65 @@ export default function LoginPage() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 2,
-        bgcolor: "background.default",
-      }}
-    >
-      <Paper variant="outlined" sx={{ width: "100%", maxWidth: 380, p: 4 }}>
-        <Typography
-          component={Link}
-          href="/"
-          sx={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "1.1rem", textDecoration: "none", color: "text.primary", display: "block", mb: 3 }}
+    <AuthShell>
+      <Typography variant="h5" component="h1" sx={{ mb: 3 }}>
+        Sign in to TeamFlow
+      </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2.5 }}>
+          {error}
+        </Alert>
+      )}
+
+      {needsVerification && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2.5 }}
+          action={
+            !resent && (
+              <Button color="inherit" size="small" onClick={handleResend} disabled={resending}>
+                {resending ? "Sending..." : "Resend"}
+              </Button>
+            )
+          }
         >
-          TeamFlow<Box component="span" sx={{ color: "primary.main" }}>.</Box>
-        </Typography>
+          {resent
+            ? "Verification email resent — check your inbox."
+            : "Please verify your email before signing in."}
+        </Alert>
+      )}
 
-        <Typography variant="overline" color="primary" fontWeight={700}>
-          Sign in
-        </Typography>
-        <Typography variant="h5" fontWeight={700} sx={{ mb: 3 }}>
-          Welcome back to TeamFlow
-        </Typography>
+      <form onSubmit={handleSubmit}>
+        <Field
+          label="Email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          sx={{ mb: 2.5 }}
+        />
+        <Field
+          label="Password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          sx={{ mb: 3 }}
+        />
+        <Button type="submit" variant="contained" fullWidth size="large" disabled={loading}>
+          {loading ? "Signing in..." : "Sign in"}
+        </Button>
+      </form>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
-
-        {needsVerification && (
-          <Alert
-            severity="warning"
-            sx={{ mb: 2 }}
-            action={
-              !resent && (
-                <Button color="inherit" size="small" onClick={handleResend} disabled={resending}>
-                  {resending ? "Sending..." : "Resend"}
-                </Button>
-              )
-            }
-          >
-            {resent
-              ? "Verification email resent — check your inbox."
-              : "Please verify your email before signing in."}
-          </Alert>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <TextField
-            label="Email"
-            type="email"
-            fullWidth
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            label="Password"
-            type="password"
-            fullWidth
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            sx={{ mb: 3 }}
-          />
-          <Button type="submit" variant="contained" fullWidth size="large" disabled={loading}>
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </form>
-
-        <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
-          Don't have an account?{" "}
-          <Link href="/register" style={{ color: "inherit", fontWeight: 600 }}>
-            Sign up
-          </Link>
-        </Typography>
-      </Paper>
-    </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 3 }}>
+        Don't have an account?{" "}
+        <MuiLink component={Link} href="/register" color="inherit" sx={{ fontWeight: 600 }}>
+          Sign up
+        </MuiLink>
+      </Typography>
+    </AuthShell>
   );
 }

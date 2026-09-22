@@ -4,27 +4,33 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { AppBar, Toolbar, Typography, Button, Stack, Box, Avatar } from "@mui/material";
-import { alpha } from "@mui/material/styles";
-import DashboardIcon from "@mui/icons-material/Dashboard";
-import ViewKanbanIcon from "@mui/icons-material/ViewKanban";
-import GroupsIcon from "@mui/icons-material/Groups";
+import { AppBar, Toolbar, Button, Box, Avatar, Typography } from "@mui/material";
+import DashboardOutlinedIcon from "@mui/icons-material/DashboardOutlined";
+import ViewKanbanOutlinedIcon from "@mui/icons-material/ViewKanbanOutlined";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
+import Wordmark from "@/components/Wordmark";
 import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
+
+const LINKS = [
+  { href: "/dashboard", label: "Dashboard", icon: DashboardOutlinedIcon },
+  { href: "/dashboard/projects", label: "Projects", icon: ViewKanbanOutlinedIcon },
+  { href: "/dashboard/teams", label: "Teams", icon: GroupsOutlinedIcon },
+];
 
 export default function Navbar({ userName }) {
   const pathname = usePathname();
   const { mode } = useThemeMode();
   const [signingOut, setSigningOut] = useState(false);
 
-  const links = [
-    { href: "/dashboard", label: "Dashboard", icon: <DashboardIcon sx={{ fontSize: 18 }} /> },
-    { href: "/dashboard/projects", label: "Projects", icon: <ViewKanbanIcon sx={{ fontSize: 18 }} /> },
-    { href: "/dashboard/teams", label: "Teams", icon: <GroupsIcon sx={{ fontSize: 18 }} /> },
-  ];
+  // "Projects" stays lit while you are inside a project, "Teams" inside a
+  // team; the dashboard root only matches itself.
+  function isActive(href) {
+    return href === "/dashboard" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+  }
 
   function handleSignOut() {
     // signOut() navigates away, but that redirect isn't instant — without
@@ -35,89 +41,83 @@ export default function Navbar({ userName }) {
   }
 
   return (
-    <AppBar position="sticky" color="transparent" elevation={0}>
-      <Toolbar sx={{ maxWidth: 1152, mx: "auto", width: "100%", gap: { xs: 0.25, sm: 0.5 }, py: 1 }}>
-        <Typography
-          component={Link}
-          href="/dashboard"
-          sx={{
-            fontFamily: "'Fraunces', serif",
-            fontWeight: 700,
-            fontSize: "1.15rem",
-            textDecoration: "none",
-            color: "text.primary",
-            ml: { xs: 1, sm: 4 },
-            flexShrink: 0,
-          }}
-        >
-          <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>TeamFlow</Box>
-          <Box component="span" sx={{ display: { xs: "inline", sm: "none" } }}>T</Box>
-          <Box component="span" sx={{ color: "primary.main" }}>.</Box>
-        </Typography>
+    <AppBar position="sticky" component="header">
+      <Toolbar
+        component="nav"
+        aria-label="Main"
+        disableGutters
+        sx={{ maxWidth: 1200, mx: "auto", width: "100%", px: { xs: 2, sm: 3 }, minHeight: { xs: 52, sm: 56 }, gap: { xs: 0.5, sm: 3 } }}
+      >
+        <Box sx={{ display: { xs: "none", sm: "block" } }}>
+          <Wordmark href="/dashboard" />
+        </Box>
+        <Box sx={{ display: { xs: "block", sm: "none" }, mr: 0.5 }}>
+          <Wordmark href="/dashboard" compact />
+        </Box>
 
-        <Stack direction="row" spacing={{ xs: 0, sm: 0.5 }} sx={{ flexGrow: 1, overflow: "hidden" }}>
-          {links.map((l) => {
-            const active = pathname === l.href;
+        <Box sx={{ display: "flex", alignSelf: "stretch", flexGrow: 1, gap: { xs: 0, sm: 0.5 } }}>
+          {LINKS.map((l) => {
+            const active = isActive(l.href);
+            const Icon = l.icon;
             return (
-              <Button
+              <Box
                 key={l.href}
                 component={Link}
                 href={l.href}
-                disableRipple
                 aria-label={l.label}
                 aria-current={active ? "page" : undefined}
-                sx={(theme) => ({
-                  minWidth: 0,
-                  px: { xs: 1, sm: 2 },
-                  color: active ? "primary.main" : "text.secondary",
-                  bgcolor: active ? alpha(theme.palette.primary.main, 0.1) : "transparent",
-                  fontWeight: active ? 700 : 500,
-                  "&:hover": { bgcolor: active ? alpha(theme.palette.primary.main, 0.14) : theme.palette.action.hover },
-                })}
+                sx={{
+                  position: "relative",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  px: { xs: 1.25, sm: 1.5 },
+                  fontSize: "0.875rem",
+                  fontWeight: active ? 600 : 500,
+                  color: active ? "text.primary" : "text.secondary",
+                  textDecoration: "none",
+                  transition: "color .12s ease",
+                  "&:hover": { color: "text.primary" },
+                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2, borderRadius: 0.5 },
+                  "&::after": {
+                    content: '""',
+                    position: "absolute",
+                    left: { xs: 8, sm: 12 },
+                    right: { xs: 8, sm: 12 },
+                    bottom: -1,
+                    height: 2,
+                    bgcolor: "primary.main",
+                    opacity: active ? 1 : 0,
+                    transition: "opacity .12s ease",
+                  },
+                }}
               >
-                <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-                  {l.icon}
-                  <Box component="span" sx={{ display: { xs: "none", md: "inline" } }}>{l.label}</Box>
-                </Box>
-              </Button>
+                <Icon sx={{ fontSize: 20, display: { xs: "block", sm: "none" } }} />
+                <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>{l.label}</Box>
+              </Box>
             );
           })}
-        </Stack>
+        </Box>
 
-        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.25, sm: 1 }, flexShrink: 0 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
           <ThemeToggleButton />
-
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            sx={{ pl: 0.5, pr: { xs: 0, sm: 1 }, borderRight: { xs: "none", sm: "1px solid" }, borderColor: "divider" }}
-          >
-            <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode), color: mode === "dark" ? "#F1EEFB" : "#221F2E" }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, pl: { xs: 0.5, sm: 1 } }}>
+            <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode) }}>
               {avatarInitial(userName)}
             </Avatar>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              noWrap
-              sx={{ display: { xs: "none", sm: "block" }, maxWidth: 160 }}
-            >
+            <Typography variant="body2" noWrap sx={{ display: { xs: "none", md: "block" }, maxWidth: 160, fontWeight: 500 }}>
               {userName}
             </Typography>
-          </Stack>
+          </Box>
           <Button
             size="small"
             color="inherit"
-            disableRipple
             disabled={signingOut}
             aria-label="Sign out"
-            sx={{ minWidth: 0, px: { xs: 1, sm: 2 }, color: "text.secondary", "&:hover": { color: "error.main", bgcolor: "transparent" } }}
             onClick={handleSignOut}
+            sx={{ minWidth: 0, px: { xs: 1, sm: 1.25 }, color: "text.secondary", "&:hover": { color: "text.primary" } }}
           >
-            <Box sx={{ display: "flex", alignItems: "center", gap: 0.75 }}>
-              <LogoutIcon sx={{ fontSize: 16 }} />
-              <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Sign out</Box>
-            </Box>
+            <LogoutIcon sx={{ fontSize: 18, display: { xs: "block", sm: "none" } }} />
+            <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>Sign out</Box>
           </Button>
         </Box>
       </Toolbar>

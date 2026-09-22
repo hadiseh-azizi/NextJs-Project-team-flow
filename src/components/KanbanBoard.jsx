@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
-  Box, Paper, Typography, IconButton, TextField, Menu, MenuItem, Tooltip, Alert, Snackbar,
+  Box, Typography, IconButton, TextField, Menu, MenuItem, Tooltip, Alert, Snackbar, Button,
 } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import AddIcon from "@mui/icons-material/Add";
@@ -73,7 +73,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
 
   // Fired over the empty background of a column (not over any specific
   // card) — means "drop at the end of this column". This fires whenever
-  // the pointer is over the column's Paper but not over a card (cards
+  // the pointer is over the column's background but not over a card (cards
   // stop propagation in handleCardDragOver, so this never fires while
   // hovering a card itself) — including the gap below the last card, so
   // moving off a card into empty space must always resolve to "end", not
@@ -277,12 +277,12 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         tabIndex={0}
         sx={{
           display: "flex",
-          gap: 2,
+          gap: 1.5,
           overflowX: "auto",
-          pb: 1,
+          pb: 1.5,
           alignItems: "flex-start",
-          "&::-webkit-scrollbar": { height: 6 },
-          "&::-webkit-scrollbar-thumb": { bgcolor: "grey.300", borderRadius: 3 },
+          "&::-webkit-scrollbar": { height: 8 },
+          "&::-webkit-scrollbar-thumb": { bgcolor: "line.strong", borderRadius: 4 },
           "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
         }}
       >
@@ -291,25 +291,24 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           const isOver = dragOverCol === column.id;
           const colDropTarget = dropTarget && dropTarget.columnId === column.id ? dropTarget : null;
           return (
-            <FadeInStagger key={column.id} index={columnIndex} base={200} sx={{ flex: { xs: "0 0 82%", sm: "0 0 300px", md: "0 0 300px" } }}>
-            <Paper
-              variant="outlined"
+            <FadeInStagger key={column.id} index={columnIndex} base={200} sx={{ flex: { xs: "0 0 84%", sm: "0 0 288px" } }}>
+            <Box
               onDragOver={(e) => handleColumnDragOver(e, column.id)}
               onDragLeave={() => setDragOverCol(null)}
               onDrop={(e) => handleDrop(e, column.id)}
               sx={(theme) => ({
-                p: 1.5,
-                minHeight: 340,
-                bgcolor: isOver ? alpha(theme.palette.primary.main, 0.06) : "grey.50",
-                borderColor: isOver ? "primary.main" : "divider",
-                borderWidth: isOver ? 2 : 1,
-                transition: "background-color .15s, border-color .15s",
+                p: 1,
+                minHeight: 160,
+                borderRadius: 2,
+                bgcolor: isOver ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.08) : theme.palette.surface.sunken,
+                boxShadow: isOver ? `inset 0 0 0 1.5px ${theme.palette.primary.main}` : "none",
+                transition: "background-color .12s ease, box-shadow .12s ease",
               })}
             >
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5, px: 0.5, pt: 0.5 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, pl: 1, pr: 0.25, minHeight: 32 }}>
                 {column.isDoneColumn && (
                   <Tooltip title="Final column — tasks here count as “done” in the progress report">
-                    <CheckCircleIcon sx={{ fontSize: 15, color: "success.main", flexShrink: 0 }} />
+                    <CheckCircleIcon aria-label="Final column" sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
                   </Tooltip>
                 )}
                 {renamingId === column.id ? (
@@ -356,6 +355,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                       flexGrow: 1,
                       minWidth: 0,
                       cursor: "text",
+                      transition: "color .12s ease",
                       "&:hover": { color: "primary.main" },
                       "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px", borderRadius: 0.5 },
                     }}
@@ -363,7 +363,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                     {column.name}
                   </Typography>
                 )}
-                <Typography variant="caption" color="text.secondary" fontWeight={700}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", px: 0.25 }} aria-label={`${colTasks.length} ${colTasks.length === 1 ? "task" : "tasks"}`}>
                   {colTasks.length}
                 </Typography>
                 <IconButton
@@ -375,11 +375,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                     setMenuColumn(column);
                   }}
                 >
-                  <MoreHorizIcon fontSize="small" />
+                  <MoreHorizIcon sx={{ fontSize: 20 }} />
                 </IconButton>
               </Box>
 
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
                 {colTasks.map((task, taskIndex) => (
                   <FadeInStagger key={task.id} index={taskIndex} base={140} duration={0.4}>
                     <TaskCard
@@ -392,52 +392,48 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                       }}
                       onOpen={(t) => setOpenTaskId(t.id)}
                       dropIndicator={colDropTarget?.taskId === task.id ? colDropTarget.position : null}
+                      isDone={!!column.isDoneColumn}
                     />
                   </FadeInStagger>
                 ))}
                 {colTasks.length === 0 && (
-                  <Box sx={{ border: "1.5px dashed", borderColor: "grey.300", borderRadius: 2, py: 3, textAlign: "center" }}>
-                    <Typography variant="caption" color="text.disabled">
-                      No tasks here
-                    </Typography>
-                  </Box>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 1, py: 1.5 }}>
+                    No tasks yet
+                  </Typography>
                 )}
                 {colDropTarget?.position === "end" && colTasks.length > 0 && (
-                  <Box sx={{ height: 2, bgcolor: "primary.main", borderRadius: 1, mx: 0.5 }} />
+                  <Box sx={{ height: 2, bgcolor: "primary.main", borderRadius: 1 }} />
                 )}
               </Box>
 
-              <Box
-                component="button"
-                type="button"
+              <Button
+                size="small"
+                color="inherit"
+                fullWidth
+                startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                 onClick={() => setNewTaskColumnId(column.id)}
                 aria-label={`Add task to ${column.name}`}
-                sx={{
-                  display: "flex", alignItems: "center", gap: 0.5, mt: 1, px: 1, py: 0.75, width: "100%",
-                  border: "none", bgcolor: "transparent", font: "inherit", textAlign: "left",
-                  borderRadius: 1.5, cursor: "pointer", color: "text.secondary",
-                  "&:hover": { bgcolor: "action.hover", color: "primary.main" },
-                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "-2px" },
-                }}
+                sx={{ mt: 0.5, justifyContent: "flex-start", color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" } }}
               >
-                <AddIcon sx={{ fontSize: 17 }} />
-                <Typography variant="caption" fontWeight={600}>
-                  Add task
-                </Typography>
-              </Box>
-            </Paper>
+                Add task
+              </Button>
+            </Box>
             </FadeInStagger>
           );
         })}
 
-        <Box sx={{ flex: { xs: "0 0 82%", sm: "0 0 260px", md: "0 0 260px" } }}>
+        <Box sx={{ flex: { xs: "0 0 84%", sm: "0 0 240px" } }}>
           {addingColumn ? (
-            <Paper variant="outlined" component="form" onSubmit={handleAddColumn} sx={{ p: 1.5 }}>
+            <Box
+              component="form"
+              onSubmit={handleAddColumn}
+              sx={(theme) => ({ p: 1, borderRadius: 2, bgcolor: theme.palette.surface.sunken })}
+            >
               <TextField
                 autoFocus
                 fullWidth
                 size="small"
-                placeholder="New column name"
+                placeholder="Column name"
                 inputProps={{ "aria-label": "New column name" }}
                 value={newColumnName}
                 onChange={(e) => setNewColumnName(e.target.value)}
@@ -452,53 +448,26 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 disabled={addingColumnSubmitting}
                 sx={{ mb: 1 }}
               />
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <Box
-                  component="button"
-                  type="submit"
-                  disabled={addingColumnSubmitting}
-                  sx={{
-                    border: "none", cursor: "pointer", bgcolor: "primary.main", color: "white",
-                    borderRadius: 1, px: 1.5, py: 0.5, fontSize: 13, fontWeight: 600, font: "inherit",
-                    "&:disabled": { cursor: "default", opacity: 0.6 },
-                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
-                  }}
-                >
-                  {addingColumnSubmitting ? "Adding..." : "Add"}
-                </Box>
-                <Box
-                  component="button"
-                  type="button"
-                  disabled={addingColumnSubmitting}
-                  onClick={() => setAddingColumn(false)}
-                  sx={{
-                    border: "none", cursor: "pointer", bgcolor: "transparent", color: "text.secondary", fontSize: 13, font: "inherit",
-                    "&:disabled": { cursor: "default", opacity: 0.6 },
-                    "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
-                  }}
-                >
+              <Box sx={{ display: "flex", gap: 0.5 }}>
+                <Button type="submit" size="small" variant="contained" disabled={addingColumnSubmitting}>
+                  {addingColumnSubmitting ? "Adding..." : "Add column"}
+                </Button>
+                <Button type="button" size="small" color="inherit" disabled={addingColumnSubmitting} onClick={() => setAddingColumn(false)}>
                   Cancel
-                </Box>
+                </Button>
               </Box>
-            </Paper>
-          ) : (
-            <Box
-              component="button"
-              type="button"
-              onClick={() => setAddingColumn(true)}
-              sx={(theme) => ({
-                display: "flex", alignItems: "center", gap: 0.75, p: 1.5, width: "100%", borderRadius: 2,
-                border: "1.5px dashed", borderColor: "grey.300", cursor: "pointer", color: "text.secondary",
-                bgcolor: "transparent", font: "inherit", textAlign: "left",
-                "&:hover": { borderColor: "primary.main", color: "primary.main", bgcolor: alpha(theme.palette.primary.main, 0.05) },
-                "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
-              })}
-            >
-              <AddIcon fontSize="small" />
-              <Typography variant="body2" fontWeight={600}>
-                New column
-              </Typography>
             </Box>
+          ) : (
+            <Button
+              type="button"
+              color="inherit"
+              fullWidth
+              startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+              onClick={() => setAddingColumn(true)}
+              sx={{ justifyContent: "flex-start", height: 40, px: 1.5, color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" } }}
+            >
+              New column
+            </Button>
           )}
         </Box>
       </Box>
@@ -516,11 +485,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         <MenuItem onClick={() => handleToggleDoneColumn(menuColumn)}>
           {menuColumn?.isDoneColumn ? (
             <>
-              <CheckCircleIcon fontSize="small" sx={{ ml: 1, color: "success.main" }} /> Unmark as final column
+              <CheckCircleIcon fontSize="small" sx={{ mr: 1, color: "success.main" }} /> Unmark as final column
             </>
           ) : (
             <>
-              <CheckCircleOutlineIcon fontSize="small" sx={{ ml: 1 }} /> Mark as final column
+              <CheckCircleOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Mark as final column
             </>
           )}
         </MenuItem>

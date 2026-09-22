@@ -9,8 +9,9 @@ import { accessibleTeamIds } from "@/lib/authz";
 import ProgressChart from "@/components/ProgressChart";
 import OverviewStats from "@/components/OverviewStats";
 import Link from "next/link";
-import { Box, Card, CardContent, Typography, Button, Stack } from "@mui/material";
-import FadeInStagger from "@/components/FadeInStagger";
+import { Box, Grid, Typography, Button } from "@mui/material";
+import PageHeader from "@/components/PageHeader";
+import EmptyState from "@/components/EmptyState";
 
 const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
 
@@ -52,40 +53,37 @@ export default async function DashboardPage() {
 
   return (
     <Box>
-      <Typography variant="overline" color="primary">
-        Dashboard
-      </Typography>
-      <Typography variant="h4" sx={{ mb: 4 }}>
-        Overview
-      </Typography>
+      <PageHeader title="Overview" />
 
-      {/* Each stat below is a button — clicking it opens the matching list
-          right underneath (active projects / completed tasks / your open
-          tasks) instead of being purely decorative. */}
-      <FadeInStagger index={0} base={150}>
-        <OverviewStats projects={serialized} userId={userId} />
-      </FadeInStagger>
-
-      <FadeInStagger index={1} base={150}>
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
+      {serialized.length === 0 ? (
+        <EmptyState
+          title="No projects yet"
+          description="A project is a board that belongs to a team. Create one to start tracking tasks."
+          action={
+            <>
+              <Button component={Link} href="/dashboard/projects?new=1" variant="contained">
+                Create your first project
+              </Button>
+              <Button component={Link} href="/dashboard/teams" color="inherit">
+                Go to teams
+              </Button>
+            </>
+          }
+        />
+      ) : (
+        <Grid container columnSpacing={{ md: 8 }} rowSpacing={{ xs: 5, md: 0 }}>
+          {/* Each stat is a switch — choosing one lists what is behind it
+              underneath (my open tasks / completed tasks / projects). */}
+          <Grid item xs={12} md={7}>
+            <OverviewStats projects={serialized} userId={userId} />
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Typography variant="h6" component="h2" sx={{ mb: 1.5 }}>
               Project progress
             </Typography>
             <ProgressChart projects={serialized} />
-          </CardContent>
-        </Card>
-      </FadeInStagger>
-
-      {serialized.length === 0 && (
-        <Stack alignItems="center" spacing={1} sx={{ mt: 6 }}>
-          <Typography color="text.secondary" variant="body2">
-            You don't have any projects yet.
-          </Typography>
-          <Button component={Link} href="/dashboard/projects?new=1" variant="contained" size="large">
-            Create your first project
-          </Button>
-        </Stack>
+          </Grid>
+        </Grid>
       )}
     </Box>
   );

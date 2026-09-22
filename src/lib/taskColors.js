@@ -2,14 +2,14 @@
 // mode pastel and a dark-mode deep/muted counterpart so a task's color
 // stays recognizable (and legible) in either theme.
 export const TASK_COLORS = [
-  { key: "rose", label: "Rose", light: "#FBD5DD", dark: "#5C2B36" },
-  { key: "peach", label: "Peach", light: "#FCE1C8", dark: "#5A3B22" },
-  { key: "lemon", label: "Lemon", light: "#FBF0C0", dark: "#544B1D" },
-  { key: "mint", label: "Mint", light: "#D3F0DD", dark: "#234A34" },
-  { key: "sky", label: "Sky", light: "#D6E9FB", dark: "#20395A" },
-  { key: "lavender", label: "Lavender", light: "#E4DBF7", dark: "#3B2E56" },
-  { key: "sand", label: "Sand", light: "#EEE3D2", dark: "#4A3C28" },
-  { key: "coral", label: "Coral", light: "#FCDCD8", dark: "#552B27" },
+  { key: "rose", label: "Rose", light: "#F6D8DA", dark: "#5A2E35" },
+  { key: "peach", label: "Peach", light: "#F8E0CA", dark: "#583B25" },
+  { key: "lemon", label: "Lemon", light: "#F4EBC3", dark: "#524A22" },
+  { key: "mint", label: "Mint", light: "#D6EBDB", dark: "#264636" },
+  { key: "sky", label: "Sky", light: "#D7E6F0", dark: "#243B50" },
+  { key: "lavender", label: "Lavender", light: "#E5DEEE", dark: "#3F3453" },
+  { key: "sand", label: "Sand", light: "#EDE4D3", dark: "#4A3C28" },
+  { key: "coral", label: "Coral", light: "#F7DAD2", dark: "#552D28" },
 ];
 
 export function resolveTaskColor(key, mode = "light") {

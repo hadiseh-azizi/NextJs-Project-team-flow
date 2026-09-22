@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Box, Container, Typography, Button, AppBar, Toolbar, Grid, Stack, Chip } from "@mui/material";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import { Box, Container, Typography, Button, Grid, Avatar } from "@mui/material";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import Wordmark from "@/components/Wordmark";
 
 const FEATURES = [
   {
@@ -17,56 +18,62 @@ const FEATURES = [
   },
 ];
 
-// A tiny, static illustration of the real Kanban board — shown instead of a
-// generic icon grid, the way most real product landing pages preview the
-// actual UI rather than describing it in the abstract.
+// A small, static picture of the real board — same columns, cards and
+// colors as the app itself, so what you see here is what you get.
 function BoardPreview() {
   const cols = [
-    { label: "To Do", color: "#9CA3AF", cards: ["Write final report", "Check sensors"] },
-    { label: "In Progress", color: "#B45309", cards: ["Simulate in MATLAB"] },
-    { label: "Done", color: "#15803D", cards: ["Mathematical modeling", "Controller design"] },
+    {
+      label: "To Do",
+      cards: [
+        { title: "Write final report", due: "Due Oct 12" },
+        { title: "Check sensors" },
+      ],
+    },
+    {
+      label: "In Progress",
+      cards: [{ title: "Simulate in MATLAB", who: "M", whoColor: "#F8E0CA" }],
+    },
+    {
+      label: "Done",
+      done: true,
+      cards: [{ title: "Mathematical modeling" }, { title: "Controller design", who: "A", whoColor: "#D6EBDB" }],
+    },
   ];
   return (
-    <Box
-      sx={{
-        border: "1px solid",
-        borderColor: "divider",
-        borderRadius: 3,
-        p: 2,
-        bgcolor: "background.paper",
-      }}
-    >
-      <Stack direction="row" spacing={0.75} sx={{ mb: 1.5, px: 0.5 }}>
-        <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: "#F87171" }} />
-        <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: "#FBBF24" }} />
-        <Box sx={{ width: 9, height: 9, borderRadius: "50%", bgcolor: "#34D399" }} />
-      </Stack>
-      <Grid container spacing={1.25}>
-        {cols.map((c) => (
-          <Grid item xs={12} sm={4} key={c.label}>
-            <Box sx={{ bgcolor: "grey.50", borderRadius: 2, p: 1, height: "100%" }}>
-              <Stack direction="row" alignItems="center" spacing={0.75} sx={{ mb: 1, px: 0.5 }}>
-                <Box sx={{ width: 6, height: 6, borderRadius: "50%", bgcolor: c.color }} />
-                <Typography variant="caption" fontWeight={700} color="text.secondary" noWrap>
-                  {c.label}
-                </Typography>
-              </Stack>
-              <Stack spacing={0.75}>
-                {c.cards.map((card) => (
-                  <Box
-                    key={card}
-                    sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 1.5, p: 0.9 }}
-                  >
-                    <Typography variant="caption" sx={{ fontSize: 11, lineHeight: 1.3, display: "block" }}>
-                      {card}
+    <Box aria-hidden sx={{ display: "flex", gap: 1.25, alignItems: "flex-start" }}>
+      {cols.map((c) => (
+        <Box key={c.label} sx={{ flex: 1, minWidth: 0, bgcolor: "surface.sunken", borderRadius: 2, p: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 0.5, pb: 1, minHeight: 24 }}>
+            {c.done && <CheckCircleIcon sx={{ fontSize: 14, color: "success.main" }} />}
+            <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap>
+              {c.label}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ ml: "auto", pr: 0.5 }}>
+              {c.cards.length}
+            </Typography>
+          </Box>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 0.75 }}>
+            {c.cards.map((card) => (
+              <Box
+                key={card.title}
+                sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 1, p: 1, boxShadow: "0 1px 2px rgba(30,27,22,0.07)" }}
+              >
+                <Typography sx={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.35 }}>{card.title}</Typography>
+                {(card.due || card.who) && (
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mt: 0.75 }}>
+                    <Typography sx={{ fontSize: 11.5 }} color="text.secondary">
+                      {card.due || ""}
                     </Typography>
+                    {card.who && (
+                      <Avatar sx={{ width: 18, height: 18, fontSize: 10, bgcolor: card.whoColor, color: "#1E1B16" }}>{card.who}</Avatar>
+                    )}
                   </Box>
-                ))}
-              </Stack>
-            </Box>
-          </Grid>
-        ))}
-      </Grid>
+                )}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      ))}
     </Box>
   );
 }
@@ -74,86 +81,62 @@ function BoardPreview() {
 export default function Home() {
   return (
     <Box>
-      <AppBar position="static" color="transparent" elevation={0}>
-        <Toolbar sx={{ maxWidth: 1152, mx: "auto", width: "100%", py: 1, gap: { xs: 0.5, sm: 0 } }}>
-          <Typography sx={{ flexGrow: 1, fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: { xs: "1rem", sm: "1.15rem" } }}>
-            TeamFlow<Box component="span" sx={{ color: "primary.main" }}>.</Box>
-          </Typography>
-          <Button component={Link} href="/login" color="inherit" sx={{ mr: { xs: 0, sm: 1 }, px: { xs: 1, sm: 2 }, color: "text.secondary" }}>
+      <Container maxWidth="lg" component="header" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2.5 }}>
+        <Wordmark />
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Button component={Link} href="/login" color="inherit" sx={{ color: "text.secondary" }}>
             Sign in
           </Button>
-          <Button component={Link} href="/register" variant="contained" sx={{ px: { xs: 1.5, sm: 2 } }}>
+          <Button component={Link} href="/register" variant="outlined" color="inherit">
             Get started
           </Button>
-        </Toolbar>
-      </AppBar>
+        </Box>
+      </Container>
 
-      <Container maxWidth="lg" sx={{ py: { xs: 6, md: 9 } }}>
-        <Grid container spacing={6} alignItems="center">
+      <Container maxWidth="lg" component="main" sx={{ pt: { xs: 5, md: 10 }, pb: { xs: 6, md: 8 } }}>
+        <Grid container spacing={{ xs: 6, md: 8 }} alignItems="center">
           <Grid item xs={12} md={6}>
-            <Chip
-              label="Built for small teams"
-              size="small"
-              sx={{ bgcolor: "rgba(168,117,46,0.1)", color: "primary.main", mb: 2.5, fontWeight: 700 }}
-            />
-            <Typography
-              variant="h3"
-              sx={{ fontWeight: 800, letterSpacing: "-0.02em", fontSize: { xs: "2rem", md: "2.6rem" }, mb: 2.5, lineHeight: 1.25 }}
-            >
+            <Typography variant="h3" component="h1" sx={{ fontSize: { xs: "2.125rem", md: "2.75rem" }, mb: 2.5 }}>
               Run your projects with the precision of an engineering drawing
             </Typography>
-            <Typography color="text.secondary" sx={{ mb: 4, maxWidth: 440, fontSize: "1.05rem" }}>
+            <Typography color="text.secondary" sx={{ mb: 4, maxWidth: 440, fontSize: "1.0625rem" }}>
               Kanban boards, isolated teams, and progress reports — all in one simple workspace.
             </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ xs: "stretch", sm: "center" }}>
-              <Button component={Link} href="/register" variant="contained" size="large" endIcon={<ArrowForwardIcon />}>
+            <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, gap: 1.5, alignItems: { xs: "stretch", sm: "center" } }}>
+              <Button component={Link} href="/register" variant="contained" size="large">
                 Create your first project
               </Button>
-              <Button component={Link} href="/login" size="large" sx={{ color: "text.secondary" }}>
+              <Button component={Link} href="/login" size="large" color="inherit" sx={{ color: "text.secondary" }}>
                 I already have an account
               </Button>
-            </Stack>
+            </Box>
           </Grid>
           <Grid item xs={12} md={6}>
             <BoardPreview />
           </Grid>
         </Grid>
 
-        <Box sx={{ mt: { xs: 8, md: 12 } }}>
-          <Grid container spacing={0} sx={{ border: "1px solid", borderColor: "divider", borderRadius: 2, overflow: "hidden" }}>
-            {FEATURES.map((f, i) => (
-              <Grid
-                item
-                xs={12}
-                md={4}
-                key={f.title}
-                sx={{
-                  p: 3.5,
-                  borderTop: { xs: i > 0 ? "1px solid" : "none", md: "none" },
-                  borderLeft: { md: i > 0 ? "1px solid" : "none" },
-                  borderColor: "divider",
-                }}
-              >
-                <Typography
-                  sx={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: "1.5rem", color: "primary.main", mb: 1.5, lineHeight: 1 }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </Typography>
-                <Typography fontWeight={700} sx={{ mb: 0.5 }}>
+        <Grid container spacing={{ xs: 3, md: 6 }} sx={{ mt: { xs: 8, md: 12 } }} component="section" aria-label="Features">
+          {FEATURES.map((f) => (
+            <Grid item xs={12} md={4} key={f.title}>
+              <Box sx={{ borderTop: "1px solid", borderColor: "line.strong", pt: 2 }}>
+                <Typography variant="subtitle1" component="h2" sx={{ mb: 0.5 }}>
                   {f.title}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   {f.desc}
                 </Typography>
-              </Grid>
-            ))}
-          </Grid>
-        </Box>
+              </Box>
+            </Grid>
+          ))}
+        </Grid>
       </Container>
 
-      <Typography variant="caption" color="text.disabled" align="center" display="block" sx={{ py: 4, borderTop: "1px solid", borderColor: "divider", mt: 4 }}>
-        TeamFlow — Final year project
-      </Typography>
+      <Container maxWidth="lg" component="footer" sx={{ py: 3, borderTop: "1px solid", borderColor: "divider" }}>
+        <Typography variant="caption" color="text.secondary">
+          TeamFlow — Final year project
+        </Typography>
+      </Container>
     </Box>
   );
 }
