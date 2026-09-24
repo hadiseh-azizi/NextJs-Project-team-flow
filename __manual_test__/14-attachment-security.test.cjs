@@ -199,6 +199,39 @@ function mockFindByIdChain(doc) {
     assert.strictEqual(result.ok, true);
   });
 
+  console.log("\nattachmentPolicy.js — .py (Python) attachment support");
+
+  await test("accepts a .py file declared as text/x-python", () => {
+    const result = validateAttachmentFile("script.py", "text/x-python", Buffer.from("print('hello')\n"));
+    assert.strictEqual(result.ok, true);
+  });
+
+  await test("accepts a .py file declared as text/plain (common browser fallback)", () => {
+    const result = validateAttachmentFile("script.py", "text/plain", Buffer.from("def main():\n    pass\n"));
+    assert.strictEqual(result.ok, true);
+  });
+
+  await test("accepts a .py file with no declared MIME type (common when the OS has no .py mapping)", () => {
+    const result = validateAttachmentFile("script.py", "", Buffer.from("import sys\n"));
+    assert.strictEqual(result.ok, true);
+  });
+
+  await test("rejects a binary file renamed to .py (no NUL-byte heuristic passes)", () => {
+    const binary = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]);
+    const result = validateAttachmentFile("script.py", "text/x-python", binary);
+    assert.strictEqual(result.ok, false);
+  });
+
+  await test("rejects a .py.exe double extension even with a text/x-python MIME type", () => {
+    const result = validateAttachmentFile("script.py.exe", "text/x-python", Buffer.from("print(1)\n"));
+    assert.strictEqual(result.ok, false);
+  });
+
+  await test("an empty declared MIME type still only pairs with .py, not other extensions", () => {
+    const result = validateAttachmentFile("script.exe", "", Buffer.from("MZ\x90\x00"));
+    assert.strictEqual(result.ok, false);
+  });
+
   console.log("\nauthz.js — getTaskAccess() attachment-data projection");
 
   await test("excludes attachments.data by default", async () => {

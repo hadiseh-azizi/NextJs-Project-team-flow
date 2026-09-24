@@ -50,7 +50,15 @@ export const ALLOWED_TYPES = {
   "image/jpeg": [".jpg", ".jpeg"],
   "image/gif": [".gif"],
   "image/webp": [".webp"],
-  "text/plain": [".txt"],
+  // .py has no single standard browser-reported MIME type — depending on
+  // the OS's mime database, browsers send "text/x-python", fall back to
+  // the generic "text/plain", or (commonly, since most OSes don't
+  // register a mapping for .py at all) send an empty string. All three
+  // are accepted here, paired only with the ".py" extension, so this
+  // doesn't loosen validation for anything else.
+  "text/plain": [".txt", ".py"],
+  "text/x-python": [".py"],
+  "": [".py"],
   "text/csv": [".csv"],
   "application/msword": [".doc"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
@@ -62,7 +70,7 @@ export const ALLOWED_TYPES = {
 
 // Human-readable summary for error messages / UI copy, derived from the
 // allowlist above so it can't fall out of sync with it.
-export const ALLOWED_TYPES_SUMMARY = "PDF, PNG, JPEG, GIF, WebP, TXT, CSV, and common Office documents";
+export const ALLOWED_TYPES_SUMMARY = "PDF, PNG, JPEG, GIF, WebP, TXT, CSV, Python (.py), and common Office documents";
 
 function getExtension(filename) {
   const match = /\.[^./\\]+$/.exec(filename || "");
@@ -151,6 +159,11 @@ function matchesSignature(buffer, mimeType) {
       return bufferStartsWith(buffer, [0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-"
     case "text/plain":
     case "text/csv":
+    case "text/x-python":
+    case "":
+      // Same rationale as .txt/.csv above: plain source code has no magic
+      // number, so the byte-level check is the same "no NUL bytes" text
+      // heuristic rather than a signature match.
       return looksLikeText(buffer);
     default:
       if (ZIP_OFFICE_MIMES.has(mimeType)) {

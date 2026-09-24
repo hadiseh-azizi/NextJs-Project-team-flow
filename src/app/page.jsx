@@ -134,12 +134,17 @@ export default function Home() {
         </Grid>
       </Container>
 
-      <Container maxWidth="lg" component="footer" sx={{ py: 3, borderTop: "1px solid", borderColor: "divider" }}>
-        <Typography variant="caption" color="text.secondary">
-          TeamFlow — Final year project
-          Designed by Hadiseh Azizi 
-          Supervised by Dr Ghanbarpur
-          Sistan and Baluchestan university 
+      <Container
+        maxWidth="lg"
+        component="footer"
+        sx={{ py: 3, borderTop: "1px solid", borderColor: "divider", textAlign: "center" }}
+      >
+        <Typography variant="caption" color="text.secondary" component="p" sx={{ lineHeight: 1.8 }}>
+          Designed by Hadiseh Azizi
+          <br />
+          Supervised by Dr. Ghanbarpur
+          <br />
+          Sistan and Baluchestan University
         </Typography>
       </Container>
     </Box>
