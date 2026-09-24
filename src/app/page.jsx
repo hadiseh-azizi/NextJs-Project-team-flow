@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Box, Container, Typography, Button, Grid, Avatar } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import Wordmark from "@/components/Wordmark";
+import ThemeToggleButton from "@/components/ThemeToggleButton";
 
 const FEATURES = [
   {
@@ -83,7 +84,8 @@ export default function Home() {
     <Box>
       <Container maxWidth="lg" component="header" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2.5 }}>
         <Wordmark />
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 } }}>
+          <ThemeToggleButton />
           <Button component={Link} href="/login" color="inherit" sx={{ color: "text.secondary" }}>
             Sign in
           </Button>
@@ -135,6 +137,9 @@ export default function Home() {
       <Container maxWidth="lg" component="footer" sx={{ py: 3, borderTop: "1px solid", borderColor: "divider" }}>
         <Typography variant="caption" color="text.secondary">
           TeamFlow — Final year project
+          Designed by Hadiseh Azizi 
+          Supervised by Dr Ghanbarpur
+          Sistan and Baluchestan university 
         </Typography>
       </Container>
     </Box>

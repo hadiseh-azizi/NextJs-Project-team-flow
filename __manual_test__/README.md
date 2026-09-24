@@ -32,6 +32,8 @@ node __manual_test__/17-api-validation-audit.test.cjs
 node __manual_test__/18-ip-trust-hardening.test.cjs
 node __manual_test__/19-invitation-rate-limit.test.cjs
 node __manual_test__/20-nodemailer-version-regression.test.cjs
+node __manual_test__/21-team-list-serialization.test.cjs
+node __manual_test__/22-rename-entities.test.cjs
 ```
 
 (No `npm test` script was added — this app has none today, and adding
@@ -111,6 +113,18 @@ is opened. Unlike `07-email-html-escaping.test.cjs`, which stubs
 installed dependency to catch a breaking API change from the version
 bump. Also re-runs `sendVerificationEmail()`'s no-SMTP-configured
 fallback path with the real import loaded.
+
+`22-rename-entities.test.cjs` (Rename Projects/Tasks/Teams/Columns
+feature) covers the two new endpoints this phase adds — `PATCH
+/api/projects/[id]` and `PATCH /api/teams/[id]` — for authorization
+(manager-only, 401/403 before any write), validation (empty and
+whitespace-only names rejected with 400, nothing persisted), and the
+happy path (name trimmed and persisted via the expected `$set`). It
+also re-checks, at the route level, that the two rename paths this
+phase reuses rather than duplicates — task title (`PATCH
+/api/tasks/[id]`) and column name (`PATCH
+/api/projects/[id]/columns/[columnId]`) — still reject a
+whitespace-only name without saving.
 
 ## What these do and don't prove
 

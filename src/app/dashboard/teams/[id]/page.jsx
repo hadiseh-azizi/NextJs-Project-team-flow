@@ -10,6 +10,8 @@ import Field from "@/components/FormField";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import RenameDialog from "@/components/RenameDialog";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
@@ -33,6 +35,9 @@ export default function TeamDetailPage() {
   const [removeError, setRemoveError] = useState("");
   const [removing, setRemoving] = useState(false);
   const [cancelingInviteId, setCancelingInviteId] = useState(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState("");
 
   async function load() {
     const isCurrent = nextRequest();
@@ -121,6 +126,29 @@ export default function TeamDetailPage() {
     }
   }
 
+  async function handleRenameTeam(newName) {
+    if (renaming) return;
+    setRenaming(true);
+    setRenameError("");
+    try {
+      const data = await apiFetch(`/api/teams/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!isMounted()) return;
+      // The route returns the full team DTO, so the new name shows up
+      // immediately without a separate reload.
+      setTeam(data);
+      setRenameOpen(false);
+    } catch (err) {
+      if (!isMounted()) return;
+      setRenameError(errorMessage(err, "Couldn't rename the team. Please try again."));
+    } finally {
+      if (isMounted()) setRenaming(false);
+    }
+  }
+
   if (loadError && !team) {
     return (
       <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
@@ -155,6 +183,20 @@ export default function TeamDetailPage() {
         back={{ href: "/dashboard/teams", label: "Teams" }}
         title={team.name}
         description={`Managed by ${team.manager.name}`}
+        actions={
+          isManager && (
+            <Button
+              color="inherit"
+              startIcon={<EditOutlinedIcon sx={{ fontSize: 18 }} />}
+              onClick={() => {
+                setRenameError("");
+                setRenameOpen(true);
+              }}
+            >
+              Rename
+            </Button>
+          )
+        }
       />
 
       {isManager && (
@@ -258,6 +300,20 @@ export default function TeamDetailPage() {
         }}
         loading={removing}
         error={removeError}
+      />
+
+      <RenameDialog
+        open={renameOpen}
+        title="Rename team"
+        label="Team name"
+        value={team.name}
+        onSave={handleRenameTeam}
+        onClose={() => {
+          setRenameOpen(false);
+          setRenameError("");
+        }}
+        loading={renaming}
+        error={renameError}
       />
     </Box>
   );

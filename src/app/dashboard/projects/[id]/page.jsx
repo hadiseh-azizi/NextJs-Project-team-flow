@@ -13,6 +13,8 @@ import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
 import KanbanBoard from "@/components/KanbanBoard";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import RenameDialog from "@/components/RenameDialog";
+import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
@@ -28,6 +30,9 @@ export default function ProjectDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState("");
 
   // KanbanBoard triggers this same reload after every task/column change
   // (drag, add, rename, delete...). Those can fire in quick succession —
@@ -71,6 +76,29 @@ export default function ProjectDetailPage() {
       if (!isMounted()) return;
       setDeleteError(errorMessage(err, "Couldn't delete this project. Please try again."));
       setDeleting(false);
+    }
+  }
+
+  async function handleRenameProject(newName) {
+    if (renaming) return;
+    setRenaming(true);
+    setRenameError("");
+    try {
+      const data = await apiFetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!isMounted()) return;
+      // The route returns the full project DTO, so the new name (and
+      // everything else) shows up immediately without a separate reload.
+      setProject(data);
+      setRenameOpen(false);
+    } catch (err) {
+      if (!isMounted()) return;
+      setRenameError(errorMessage(err, "Couldn't rename the project. Please try again."));
+    } finally {
+      if (isMounted()) setRenaming(false);
     }
   }
 
@@ -119,6 +147,18 @@ export default function ProjectDetailPage() {
         sx={{ mb: 3 }}
         actions={
           <>
+            {isManager && (
+              <Button
+                color="inherit"
+                startIcon={<EditOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => {
+                  setRenameError("");
+                  setRenameOpen(true);
+                }}
+              >
+                Rename
+              </Button>
+            )}
             <Button component={Link} href={`/dashboard/teams/${project.team.id}`} variant="outlined" color="inherit">
               Team: {project.team.name}
             </Button>
@@ -179,6 +219,20 @@ export default function ProjectDetailPage() {
         }}
         loading={deleting}
         error={deleteError}
+      />
+
+      <RenameDialog
+        open={renameOpen}
+        title="Rename project"
+        label="Project name"
+        value={project.name}
+        onSave={handleRenameProject}
+        onClose={() => {
+          setRenameOpen(false);
+          setRenameError("");
+        }}
+        loading={renaming}
+        error={renameError}
       />
     </Box>
   );

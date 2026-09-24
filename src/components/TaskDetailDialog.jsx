@@ -5,7 +5,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography,
   FormControl, Select, OutlinedInput, Checkbox, ListItemText, Chip,
   List, ListItem, ListItemIcon, ListItemText as MuiListItemText, IconButton, Divider,
-  CircularProgress, Alert, MenuItem, useMediaQuery,
+  CircularProgress, Alert, MenuItem, useMediaQuery, TextField,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
@@ -46,12 +46,21 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
   const columnRequest = useLatestRequest();
   const colorRequest = useLatestRequest();
   const assigneesRequest = useLatestRequest();
+  const titleRequest = useLatestRequest();
+  // The title field commits on both blur and Enter, which can fire close
+  // enough together (Enter, then the resulting blur) to both reach
+  // saveTitle() before the first request finishes — mirrors the same
+  // guard column rename uses in KanbanBoard.jsx.
+  const titleSaveInFlight = useRef(false);
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down("sm"));
   const [assigneeIds, setAssigneeIds] = useState(task.assignees.map((a) => a.id));
   const [savingAssignees, setSavingAssignees] = useState(false);
   const [columnId, setColumnId] = useState(task.columnId);
   const [color, setColor] = useState(task.color);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(task.title);
+  const [savingTitle, setSavingTitle] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
@@ -61,6 +70,42 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
   const fileInputRef = useRef(null);
+
+  function startEditingTitle() {
+    setTitleDraft(task.title);
+    setEditingTitle(true);
+  }
+
+  async function saveTitle() {
+    const trimmed = titleDraft.trim();
+    // No real change (including "typed it back to the same thing") — just
+    // close the field, nothing to persist.
+    if (!trimmed || trimmed === task.title) {
+      setEditingTitle(false);
+      return;
+    }
+    if (titleSaveInFlight.current) return;
+    titleSaveInFlight.current = true;
+    const isCurrent = titleRequest();
+    setSavingTitle(true);
+    try {
+      await apiFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: trimmed }),
+      });
+      if (isMounted() && isCurrent()) onChanged();
+    } catch (err) {
+      if (!isMounted() || !isCurrent()) return;
+      setActionError(errorMessage(err, "Couldn't rename the task. Please try again."));
+    } finally {
+      titleSaveInFlight.current = false;
+      if (isMounted() && isCurrent()) {
+        setSavingTitle(false);
+        setEditingTitle(false);
+      }
+    }
+  }
 
   async function saveColor(newColor) {
     const previous = color;
@@ -203,7 +248,56 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle sx={{ overflowWrap: "anywhere" }}>{task.title}</DialogTitle>
+      <DialogTitle sx={{ overflowWrap: "anywhere" }}>
+        {editingTitle ? (
+          <TextField
+            autoFocus
+            fullWidth
+            size="small"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onFocus={(e) => e.target.select()}
+            onBlur={saveTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                saveTitle();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setEditingTitle(false);
+              }
+            }}
+            disabled={savingTitle}
+            inputProps={{ "aria-label": "Task title", maxLength: 200 }}
+            sx={{ "& .MuiInputBase-input": { fontSize: "1.25rem", fontWeight: 500 } }}
+          />
+        ) : (
+          <Typography
+            component="span"
+            role="button"
+            tabIndex={0}
+            variant="inherit"
+            title="Click to rename"
+            aria-label={`Rename task ${task.title}`}
+            onClick={startEditingTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                startEditingTitle();
+              }
+            }}
+            sx={{
+              display: "inline-block",
+              cursor: "text",
+              borderRadius: 0.5,
+              "&:hover": { color: "primary.main" },
+              "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+            }}
+          >
+            {task.title}
+          </Typography>
+        )}
+      </DialogTitle>
       <DialogContent>
         {task.description && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
