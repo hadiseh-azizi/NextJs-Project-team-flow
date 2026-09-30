@@ -1,25 +1,32 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Box, Typography, Button, Dialog, DialogTitle,
-  DialogContent, DialogActions, AvatarGroup, Avatar,
+  Box, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions,
   Checkbox, FormControlLabel, Collapse, Divider, Skeleton, Alert,
 } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import Field from "@/components/FormField";
-import { useThemeMode } from "@/components/ThemeModeContext";
-import { pastelForString } from "@/lib/pastelColor";
-import { avatarInitial } from "@/lib/avatarInitial";
+import TeamCard from "@/components/TeamCard";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
+// Circles keep their own size (each card caps at 272px and centers in its
+// cell), so the grid only decides how many fit per row: two across on a
+// phone, then as many as the width allows. Row gap is larger than column
+// gap because circles leave more empty space above and below than beside.
+const TEAM_GRID_SX = {
+  display: "grid",
+  columnGap: { xs: 2, sm: 3 },
+  rowGap: { xs: 3, sm: 4 },
+  gridTemplateColumns: { xs: "repeat(auto-fill, minmax(148px, 1fr))", sm: "repeat(auto-fill, minmax(216px, 1fr))" },
+};
+
 export default function TeamsPage() {
   const router = useRouter();
-  const { mode } = useThemeMode();
   const isMounted = useIsMounted();
   const nextRequest = useLatestRequest();
   const [teams, setTeams] = useState([]);
@@ -193,11 +200,10 @@ export default function TeamsPage() {
       </Dialog>
 
       {loading ? (
-        <Box aria-busy="true" aria-label="Loading teams">
+        <Box aria-busy="true" aria-label="Loading teams" sx={TEAM_GRID_SX}>
           {[0, 1, 2].map((i) => (
-            <Box key={i} sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider" }}>
-              <Skeleton variant="text" width="30%" height={24} />
-              <Skeleton variant="text" width="18%" height={18} />
+            <Box key={i} sx={{ width: "100%", maxWidth: 272, justifySelf: "center" }}>
+              <Skeleton variant="circular" sx={{ width: "100%", height: "auto", aspectRatio: "1 / 1" }} />
             </Box>
           ))}
         </Box>
@@ -216,45 +222,9 @@ export default function TeamsPage() {
           }
         />
       ) : (
-        <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" }}>
-          {teams.map((t) => (
-            <Box component="li" key={t.id} sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
-              <Box
-                component={Link}
-                href={`/dashboard/teams/${t.id}`}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 3,
-                  mx: -1.5,
-                  px: 1.5,
-                  py: 2,
-                  borderRadius: 1,
-                  color: "text.primary",
-                  textDecoration: "none",
-                  transition: "background-color .12s ease",
-                  "&:hover": { bgcolor: "action.hover" },
-                  "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
-                }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="subtitle1" noWrap>
-                    {t.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" noWrap>
-                    Managed by {t.manager?.name}
-                  </Typography>
-                </Box>
-                <AvatarGroup max={5} sx={{ flexShrink: 0, "& .MuiAvatar-root": { width: 26, height: 26, fontSize: 12, borderColor: "background.default" } }}>
-                  {t.members.map((m) => (
-                    <Avatar key={m.id} aria-label={m.name} sx={{ bgcolor: pastelForString(m.id, mode) }}>
-                      {avatarInitial(m.name)}
-                    </Avatar>
-                  ))}
-                </AvatarGroup>
-              </Box>
-            </Box>
+        <Box sx={TEAM_GRID_SX}>
+          {teams.map((t, i) => (
+            <TeamCard key={t.id} team={t} index={i} />
           ))}
         </Box>
       )}

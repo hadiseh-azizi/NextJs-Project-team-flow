@@ -5,7 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toColumnDTO } from "@/lib/serialize";
-import { getAccessibleProject } from "@/lib/authz";
+import { getAccessibleProject, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString, validateInteger, validateBooleanField } from "@/lib/validation";
@@ -26,6 +26,12 @@ export async function PATCH(req, { params }) {
 
   const project = await getAccessibleProject(id, userId);
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to edit this column. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   if (!isValidObjectId(columnId)) return NextResponse.json({ error: "Column not found" }, { status: 404 });
   const column = await Column.findOne({ _id: columnId, project: id }).lean();
@@ -119,6 +125,12 @@ export async function DELETE(req, { params }) {
 
   const project = await getAccessibleProject(id, userId);
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to delete this column. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   if (!isValidObjectId(columnId)) return NextResponse.json({ error: "Column not found" }, { status: 404 });
 

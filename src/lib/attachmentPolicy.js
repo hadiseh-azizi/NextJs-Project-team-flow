@@ -38,27 +38,47 @@ export const MAX_ATTACHMENTS_PER_TASK = 20;
 const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
 export const MAX_UPLOAD_REQUEST_SIZE = MAX_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
 
+// Budget for the entire multipart request body when a task is created
+// with attachments already attached (see the create-time upload path in
+// app/api/tasks/route.js). Unlike MAX_UPLOAD_REQUEST_SIZE above — sized
+// for the post-creation route's single-file uploads — this request can
+// carry up to MAX_ATTACHMENTS_PER_TASK files at once, so the budget is
+// the per-task total plus a modest per-part allowance for multipart
+// boundaries/headers across that many parts (rather than one).
+const CREATE_MULTIPART_OVERHEAD_ALLOWANCE = MAX_ATTACHMENTS_PER_TASK * 2 * 1024;
+export const MAX_CREATE_UPLOAD_REQUEST_SIZE = MAX_TOTAL_ATTACHMENTS_SIZE + CREATE_MULTIPART_OVERHEAD_ALLOWANCE;
+
 const MAX_FILENAME_LENGTH = 150;
 
-// Conservative allowlist of normal business/productivity file types. Keyed
-// by MIME type, each with the extensions it's allowed to pair with — both
-// must match, so a script renamed to ".pdf" or served with a spoofed MIME
-// type is rejected either way.
+// Source-code / plain-text-based file types that can be attached alongside
+// the business documents below. Browsers are wildly inconsistent about the
+// MIME type they report for these (".py" is often "" or "text/x-python",
+// ".ts" is commonly reported as "video/mp2t", ".md" as "" or
+// "text/markdown"), so for these extensions the *server* decides the type
+// from the extension and ignores whatever the client declared — see
+// resolveAttachmentMimeType(). They're always stored and served as
+// "text/plain", never as their "real" type (e.g. text/html), so a download
+// or direct link can never be interpreted as a script or a page. ".txt" is
+// intentionally not in this list: it was already supported and keeps its
+// original strict MIME check.
+export const CODE_EXTENSIONS = [
+  ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".c", ".cpp", ".h", ".hpp",
+  ".cs", ".php", ".rb", ".go", ".rs", ".swift", ".kt", ".kts", ".html",
+  ".css", ".scss", ".sql", ".json", ".xml", ".yaml", ".yml", ".md",
+];
+const CODE_EXTENSION_SET = new Set(CODE_EXTENSIONS);
+
+// Conservative allowlist of normal business/productivity file types plus
+// the source-code types above. Keyed by MIME type, each with the extensions
+// it's allowed to pair with — both must match, so a script renamed to
+// ".pdf" or served with a spoofed MIME type is rejected either way.
 export const ALLOWED_TYPES = {
   "application/pdf": [".pdf"],
   "image/png": [".png"],
   "image/jpeg": [".jpg", ".jpeg"],
   "image/gif": [".gif"],
   "image/webp": [".webp"],
-  // .py has no single standard browser-reported MIME type — depending on
-  // the OS's mime database, browsers send "text/x-python", fall back to
-  // the generic "text/plain", or (commonly, since most OSes don't
-  // register a mapping for .py at all) send an empty string. All three
-  // are accepted here, paired only with the ".py" extension, so this
-  // doesn't loosen validation for anything else.
-  "text/plain": [".txt", ".py"],
-  "text/x-python": [".py"],
-  "": [".py"],
+  "text/plain": [".txt", ...CODE_EXTENSIONS],
   "text/csv": [".csv"],
   "application/msword": [".doc"],
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
@@ -68,13 +88,35 @@ export const ALLOWED_TYPES = {
   "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
 };
 
-// Human-readable summary for error messages / UI copy, derived from the
-// allowlist above so it can't fall out of sync with it.
-export const ALLOWED_TYPES_SUMMARY = "PDF, PNG, JPEG, GIF, WebP, TXT, CSV, Python (.py), and common Office documents";
+// Human-readable summary for error messages / UI copy.
+export const ALLOWED_TYPES_SUMMARY =
+  "PDF, images (PNG, JPEG, GIF, WebP), TXT, CSV, Office documents, and source code (.py, .js, .ts, .java, .cpp, .json, .md and more)";
+
+// Value for <input type="file" accept="...">. Derived from the allowlist so
+// the picker can't drift from what the server accepts. It's only a hint to
+// the browser — the server re-validates everything.
+export const ATTACHMENT_ACCEPT = Object.values(ALLOWED_TYPES).flat().join(",");
 
 function getExtension(filename) {
   const match = /\.[^./\\]+$/.exec(filename || "");
   return match ? match[0].toLowerCase() : "";
+}
+
+// Canonical MIME type to validate and store for an upload. For source-code
+// extensions the client-declared type is unreliable (see CODE_EXTENSIONS),
+// so it's replaced with "text/plain"; for every other type the declared
+// type is returned unchanged and must still match the extension.
+export function resolveAttachmentMimeType(filename, declaredMimeType) {
+  if (CODE_EXTENSION_SET.has(getExtension(filename))) return "text/plain";
+  return declaredMimeType;
+}
+
+// Extension-only check used by the UI to give an immediate, specific error
+// before anything is uploaded. Not a security boundary — the server runs
+// validateAttachmentFile() on every upload regardless.
+export function isAllowedAttachmentExtension(filename) {
+  const ext = getExtension(filename);
+  return !!ext && Object.values(ALLOWED_TYPES).some((exts) => exts.includes(ext));
 }
 
 // Strips path components and anything that isn't safe to store or to echo
@@ -159,11 +201,6 @@ function matchesSignature(buffer, mimeType) {
       return bufferStartsWith(buffer, [0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-"
     case "text/plain":
     case "text/csv":
-    case "text/x-python":
-    case "":
-      // Same rationale as .txt/.csv above: plain source code has no magic
-      // number, so the byte-level check is the same "no NUL bytes" text
-      // heuristic rather than a signature match.
       return looksLikeText(buffer);
     default:
       if (ZIP_OFFICE_MIMES.has(mimeType)) {

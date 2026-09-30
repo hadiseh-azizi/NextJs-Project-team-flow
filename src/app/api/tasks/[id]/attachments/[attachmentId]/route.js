@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
-import { getTaskAccess } from "@/lib/authz";
+import { getTaskAccess, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { buildContentDisposition } from "@/lib/attachmentPolicy";
@@ -69,7 +69,13 @@ export async function DELETE(req, { params }) {
   // stays out of memory for this request.
   const access = await getTaskAccess(id, userId);
   if (!access) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  const { task } = access;
+  const { task, project } = access;
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to delete attachments from this task. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   const attachment = task.attachments.id(attachmentId);
   if (!attachment) return NextResponse.json({ error: "File not found" }, { status: 404 });

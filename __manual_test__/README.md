@@ -34,7 +34,26 @@ node __manual_test__/19-invitation-rate-limit.test.cjs
 node __manual_test__/20-nodemailer-version-regression.test.cjs
 node __manual_test__/21-team-list-serialization.test.cjs
 node __manual_test__/22-rename-entities.test.cjs
+node __manual_test__/23-flexible-board-and-completion.test.cjs
+node __manual_test__/25-group-tasks-by-project.test.cjs
+node __manual_test__/26-project-membership.test.cjs
+node __manual_test__/27-project-editing-permission.test.cjs
+node __manual_test__/28-entity-colors-and-appearance.test.cjs
+node __manual_test__/29-motion-stagger-delay.test.cjs
+node __manual_test__/30-auto-signin-after-verification.test.cjs
+node __manual_test__/31-share-project-board.test.cjs
+node __manual_test__/32-forgot-password-reset.test.cjs
+node __manual_test__/33-page-titles.test.cjs
+node __manual_test__/34-code-file-attachments.test.cjs
+node __manual_test__/35-column-reorder.test.cjs
+node __manual_test__/36-collapsible-columns.test.cjs
 ```
+
+(`24-task-creation-attachments.test.cjs` exists in the suite but was
+already missing from this run list before this phase — pre-existing gap,
+noted here rather than silently fixed since it's outside this phase's
+scope. `26-project-membership.test.cjs` had the same gap — added here
+alongside this phase's own `27-project-editing-permission.test.cjs`.)
 
 (No `npm test` script was added — this app has none today, and adding
 one was outside this phase's scope.)
@@ -125,6 +144,73 @@ phase reuses rather than duplicates — task title (`PATCH
 /api/tasks/[id]`) and column name (`PATCH
 /api/projects/[id]/columns/[columnId]`) — still reject a
 whitespace-only name without saving.
+
+`25-group-tasks-by-project.test.cjs` (Separate Open/Closed Tasks by
+Project — see CHANGELOG.md) covers `src/lib/groupByProject.js`, the pure
+helper `OverviewStats.jsx` uses to group its "My open tasks" and "Tasks
+completed" lists by project: per-project ordering and item order are
+preserved, a project with nothing in the current list produces no group
+(no empty/broken section), and grouping works for an arbitrary number of
+projects with no task ever appearing under the wrong one. The
+component's own rendering (headings, the per-project color dot) isn't
+covered by this harness for the same reason noted in
+`16-frontend-reliability-audit.test.cjs` — no DOM/React renderer in this
+sandbox — and was verified by inspection and `npm run build`.
+
+`26-project-membership.test.cjs` (Per-Project Team Membership — see
+CHANGELOG.md) covers `projectAccessFor()`'s legacy-(unrestricted) vs.
+access-restricted distinction, `validateAssignees()` staying in step
+with it, `filterAccessibleProjects()`, `applyProjectMembership()`'s
+seed-then-mutate behavior, the `POST`/`DELETE
+/api/projects/[id]/members` route, and `GET /api/projects/[id]` /
+`GET /api/projects` end to end through the real (unmocked) authz.js.
+
+`27-project-editing-permission.test.cjs` (Project-Level Editing
+Permission + Change Request system) covers `canEditProject()` /
+`isManagerApprovalMode()` (the second, narrower gate on top of
+`projectAccessFor()`'s view-access one above) and
+`applyProjectEditPermission()`; the new `POST`/`DELETE
+/api/projects/[id]/editors` route; `PATCH /api/projects/[id]` accepting
+the new `editingMode` field; the new change-request routes (create,
+list — manager sees all, everyone else only their own — and
+approve/reject); in particular, that an approved `moveTask` or
+`toggleComplete` request re-checks its target still exists before
+re-applying it (recording `applyError` instead of throwing, or
+silently applying anything, when the task/column was since deleted or
+already in the requested state), and that `editTask`/`other` are never
+auto-applied, only recorded as decided. A last section spot-checks
+that `tasks/[id]/route.js` and `columns/route.js` actually call
+`canEditProject` and 403 when it returns false, proving the wiring
+rather than re-testing the pure logic above.
+
+`30-auto-signin-after-verification.test.cjs` (Automatic Sign-In After
+Email Verification feature) covers the new `lib/autoLoginToken.js`
+(issue/consume: single-use, short-lived, hashed-at-rest, rejects
+tampered/expired/malformed input without touching the database);
+`verify-email/route.js` issuing a one-time `autoLoginToken` alongside its
+existing `{ok:true}` response only on a genuine first-time success, and
+that this is best-effort — a failure generating that token never turns
+an already-committed verification into an error response, nor does an
+invalid/expired/reused verification token ever trigger issuance in the
+first place; and `auth.js`'s new `authorize()` branch for that token
+(resolves the correct user while ignoring any client-supplied
+email/password, rejects an invalid/expired/reused/not-actually-verified
+token or one resolving to no user, is rate-limited per-IP independently
+of the existing login limiter), plus a regression check that the
+existing email/password sign-in path never touches
+`consumeAutoLoginToken` at all.
+
+`32-forgot-password-reset.test.cjs` (Forgot Password / Reset Password
+feature) covers `lib/passwordResetToken.js` (hashed-at-rest, single-use,
+expiring, a new request invalidates the old link, malformed input never
+reaches the database); `forgot-password/route.js` (identical `{ok:true}`
+for known and unknown emails and under SMTP failure or rate limiting,
+per-email and per-IP limits); `reset-password/route.js` (server-side
+password validation, generic 400 for every bad-token case, replay and
+expiry rejected, per-IP 429, nothing sensitive logged); an end-to-end
+check that the old password stops working and the new one passes the real
+`authorize()`; the strength scorer; and the reset email's content and
+HTML escaping.
 
 ## What these do and don't prove
 

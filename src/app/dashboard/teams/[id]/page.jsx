@@ -14,9 +14,11 @@ import RenameDialog from "@/components/RenameDialog";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
+import { teamColorForId } from "@/lib/entityColor";
 import { avatarInitial } from "@/lib/avatarInitial";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export default function TeamDetailPage() {
   const { id } = useParams();
@@ -26,6 +28,7 @@ export default function TeamDetailPage() {
   const isMounted = useIsMounted();
   const nextRequest = useLatestRequest();
   const [team, setTeam] = useState(null);
+  useDocumentTitle(team?.name, "Team");
   const [loadError, setLoadError] = useState("");
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
@@ -181,6 +184,7 @@ export default function TeamDetailPage() {
     <Box>
       <PageHeader
         back={{ href: "/dashboard/teams", label: "Teams" }}
+        accent={teamColorForId(team.id, mode)}
         title={team.name}
         description={`Managed by ${team.manager.name}`}
         actions={

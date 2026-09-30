@@ -10,13 +10,23 @@ import {
 import PageHeader from "@/components/PageHeader";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
+import { projectColorForId } from "@/lib/entityColor";
 import { avatarInitial } from "@/lib/avatarInitial";
 import KanbanBoard from "@/components/KanbanBoard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import RenameDialog from "@/components/RenameDialog";
+import ProjectMembersDialog from "@/components/ProjectMembersDialog";
+import RequestChangeDialog from "@/components/RequestChangeDialog";
+import ChangeRequestsPanel from "@/components/ChangeRequestsPanel";
+import ShareProjectDialog from "@/components/ShareProjectDialog";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
+import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
+import RuleFolderOutlinedIcon from "@mui/icons-material/RuleFolderOutlined";
+import ShareOutlinedIcon from "@mui/icons-material/ShareOutlined";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
+import { projectProgress } from "@/lib/taskCompletion";
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
@@ -26,6 +36,7 @@ export default function ProjectDetailPage() {
   const isMounted = useIsMounted();
   const nextRequest = useLatestRequest();
   const [project, setProject] = useState(null);
+  useDocumentTitle(project?.name, "Project");
   const [loadError, setLoadError] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -33,6 +44,10 @@ export default function ProjectDetailPage() {
   const [renameOpen, setRenameOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState("");
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [changeRequestsOpen, setChangeRequestsOpen] = useState(false);
+  const [requestChangeOpen, setRequestChangeOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   // KanbanBoard triggers this same reload after every task/column change
   // (drag, add, rename, delete...). Those can fire in quick succession —
@@ -125,23 +140,31 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const total = project.tasks.length;
-  const doneColumnIds = new Set(project.columns.filter((c) => c.isDoneColumn).map((c) => c.id));
-  const done = project.tasks.filter((t) => doneColumnIds.has(t.columnId)).length;
+  const { total, done, pct } = projectProgress(project.tasks);
   const isManager = session?.user?.id === project.manager.id;
-  // Anyone who can see this project can be assigned tasks: the team's
-  // members plus the project's manager.
+  // `project.members` is `null` for a project that predates per-project
+  // access (every team member currently has access to it) and an array
+  // otherwise (only the manager and whoever's listed) — see
+  // lib/serialize.js. Assignable people always match who can actually see
+  // the project, so a task is never handed to someone who can't open it.
+  const projectRoster = project.members ?? project.team.members;
   const assignableUsers = [
     project.manager,
-    ...project.team.members.filter((m) => m.id !== project.manager.id),
+    ...projectRoster.filter((m) => m.id !== project.manager.id),
   ];
-
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  // Whether the current user can directly edit tasks/columns here, as
+  // opposed to only being able to view them — mirrors
+  // lib/authz.js's canEditProject exactly, using the same DTO fields.
+  const canEdit =
+    isManager ||
+    project.editingMode !== "manager_approval" ||
+    project.editors.some((e) => e.id === session?.user?.id);
 
   return (
     <Box>
       <PageHeader
         back={{ href: "/dashboard/projects", label: "Projects" }}
+        accent={projectColorForId(project.id, mode).strong}
         title={project.name}
         description={project.description}
         sx={{ mb: 3 }}
@@ -162,6 +185,38 @@ export default function ProjectDetailPage() {
             <Button component={Link} href={`/dashboard/teams/${project.team.id}`} variant="outlined" color="inherit">
               Team: {project.team.name}
             </Button>
+            {isManager && (
+              <Button
+                color="inherit"
+                startIcon={<GroupOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setMembersOpen(true)}
+              >
+                Manage access
+              </Button>
+            )}
+            {isManager && (
+              <Button
+                color="inherit"
+                startIcon={<ShareOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setShareOpen(true)}
+              >
+                Share
+              </Button>
+            )}
+            {isManager && project.editingMode === "manager_approval" && (
+              <Button
+                color="inherit"
+                startIcon={<RuleFolderOutlinedIcon sx={{ fontSize: 18 }} />}
+                onClick={() => setChangeRequestsOpen(true)}
+              >
+                Change requests
+              </Button>
+            )}
+            {!isManager && !canEdit && (
+              <Button color="inherit" onClick={() => setRequestChangeOpen(true)}>
+                Request a change
+              </Button>
+            )}
             {isManager && (
               <Button color="error" onClick={() => setConfirmDelete(true)}>
                 Delete project
@@ -206,6 +261,7 @@ export default function ProjectDetailPage() {
         tasks={project.tasks}
         onChanged={load}
         assignableUsers={assignableUsers}
+        canEdit={canEdit}
       />
 
       <ConfirmDialog
@@ -234,6 +290,44 @@ export default function ProjectDetailPage() {
         loading={renaming}
         error={renameError}
       />
+
+      {isManager && (
+        <ProjectMembersDialog
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          projectId={project.id}
+          manager={project.manager}
+          teamMembers={project.team.members}
+          projectMembers={project.members}
+          editingMode={project.editingMode}
+          editors={project.editors}
+          onChanged={setProject}
+        />
+      )}
+
+      {isManager && (
+        <ShareProjectDialog open={shareOpen} onClose={() => setShareOpen(false)} projectId={project.id} />
+      )}
+
+      {isManager && (
+        <ChangeRequestsPanel
+          open={changeRequestsOpen}
+          onClose={() => setChangeRequestsOpen(false)}
+          projectId={project.id}
+          onApplied={load}
+        />
+      )}
+
+      {!isManager && (
+        <RequestChangeDialog
+          open={requestChangeOpen}
+          onClose={() => setRequestChangeOpen(false)}
+          projectId={project.id}
+          task={null}
+          columns={project.columns}
+          onSubmitted={() => {}}
+        />
+      )}
     </Box>
   );
 }

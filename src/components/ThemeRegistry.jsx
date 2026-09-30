@@ -7,6 +7,7 @@ import { CacheProvider } from "@emotion/react";
 import { ThemeProvider, CssBaseline } from "@mui/material";
 import { buildTheme } from "@/lib/theme";
 import { ThemeModeProvider, useThemeMode } from "@/components/ThemeModeContext";
+import { AppearanceThemeProvider, useAppearanceTheme } from "@/components/AppearanceThemeContext";
 
 // Standard MUI + Next.js App Router setup (see MUI's Next.js integration
 // guide) for correctly server-rendering Emotion's CSS-in-JS output.
@@ -52,7 +53,8 @@ function EmotionRegistry({ children }) {
 
 function MuiThemeBridge({ children }) {
   const { mode } = useThemeMode();
-  const theme = React.useMemo(() => buildTheme(mode), [mode]);
+  const { appearanceTheme } = useAppearanceTheme();
+  const theme = React.useMemo(() => buildTheme(mode, appearanceTheme), [mode, appearanceTheme]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -66,7 +68,9 @@ export default function ThemeRegistry({ children }) {
   return (
     <EmotionRegistry>
       <ThemeModeProvider>
-        <MuiThemeBridge>{children}</MuiThemeBridge>
+        <AppearanceThemeProvider>
+          <MuiThemeBridge>{children}</MuiThemeBridge>
+        </AppearanceThemeProvider>
       </ThemeModeProvider>
     </EmotionRegistry>
   );

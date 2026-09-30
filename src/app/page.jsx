@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Box, Container, Typography, Button, Grid, Avatar } from "@mui/material";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import Wordmark from "@/components/Wordmark";
+import TeamFlowBrand from "@/components/TeamFlowBrand";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
 
 const FEATURES = [
@@ -83,7 +83,7 @@ export default function Home() {
   return (
     <Box>
       <Container maxWidth="lg" component="header" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2.5 }}>
-        <Wordmark />
+        <TeamFlowBrand size="lg" />
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 } }}>
           <ThemeToggleButton />
           <Button component={Link} href="/login" color="inherit" sx={{ color: "text.secondary" }}>

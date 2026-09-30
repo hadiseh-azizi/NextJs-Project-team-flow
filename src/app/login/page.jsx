@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Typography, Button, Alert, Link as MuiLink } from "@mui/material";
+import { Box, Typography, Button, Alert, Link as MuiLink } from "@mui/material";
 import AuthShell from "@/components/AuthShell";
 import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
@@ -70,11 +70,11 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <Typography variant="h5" component="h1" sx={{ mb: 3 }}>
-        Sign in to TeamFlow
+        Sign in to Team Flow
       </Typography>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2.5 }}>
+        <Alert severity="error" className="tf-shake" sx={{ mb: 2.5 }}>
           {error}
         </Alert>
       )}
@@ -114,8 +114,13 @@ export default function LoginPage() {
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          sx={{ mb: 3 }}
+          sx={{ mb: 1 }}
         />
+        <Box sx={{ display: "flex", justifyContent: "flex-end", mb: 3 }}>
+          <MuiLink component={Link} href="/forgot-password" variant="body2" color="inherit">
+            Forgot password?
+          </MuiLink>
+        </Box>
         <Button type="submit" variant="contained" fullWidth size="large" disabled={loading}>
           {loading ? "Signing in..." : "Sign in"}
         </Button>

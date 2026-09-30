@@ -7,6 +7,7 @@ import { Box, Typography } from "@mui/material";
 export default function EmptyState({ title, description, action }) {
   return (
     <Box
+      className="tf-fade-up"
       sx={(theme) => ({
         bgcolor: theme.palette.surface.sunken,
         borderRadius: 2,

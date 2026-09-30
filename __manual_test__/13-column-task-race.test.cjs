@@ -64,6 +64,7 @@ function fakeReq(body) {
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/lib/authz", {
+      canEditProject: () => true,
       getAccessibleProject: async () => ({ _id: PROJECT_ID, team: { members: [] } }),
       validateAssignees: () => ({ assignees: [] }),
     });
@@ -91,6 +92,7 @@ function fakeReq(body) {
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/lib/authz", {
+      canEditProject: () => true,
       getAccessibleProject: async () => ({ _id: PROJECT_ID, team: { members: [] } }),
       validateAssignees: () => ({ assignees: [] }),
     });
@@ -122,7 +124,8 @@ function fakeReq(body) {
     mockModule("mongoose", fakeMongooseTransactional());
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/lib/authz", { getAccessibleProject: async () => ({ _id: PROJECT_ID, team: { members: [] } }) });
+    mockModule("@/lib/authz", {
+      canEditProject: () => true, getAccessibleProject: async () => ({ _id: PROJECT_ID, team: { members: [] } }) });
 
     let deleted = false;
     mockModule("@/models/Column", {

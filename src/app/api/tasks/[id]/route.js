@@ -5,7 +5,7 @@ import { connectDB } from "@/lib/mongodb";
 import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
-import { getTaskAccess, validateAssignees } from "@/lib/authz";
+import { getTaskAccess, validateAssignees, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import {
@@ -14,6 +14,7 @@ import {
   validateOptionalDate,
   validateOptionalEnumValue,
   validateInteger,
+  validateBooleanField,
 } from "@/lib/validation";
 import { TASK_COLORS } from "@/lib/taskColors";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
@@ -35,6 +36,18 @@ export async function PATCH(req, { params }) {
   const access = await getTaskAccess(id, userId);
   if (!access) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   const { task, project } = access;
+
+  // Viewing the task and editing it are two different bars once a project
+  // is in "manager_approval" mode (see lib/authz.js) — a member with view
+  // access but no edit permission gets a distinct 403 here so the
+  // frontend can point them at submitting a change request instead of
+  // treating this like they can't see the task at all.
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to edit this task. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   const body = await parseJsonBody(req);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
@@ -99,6 +112,15 @@ export async function PATCH(req, { params }) {
     if (colorResult.error) return NextResponse.json({ error: colorResult.error }, { status: 400 });
     task.color = colorResult.value;
   }
+  if (body.completed !== undefined) {
+    // Deliberately independent of `columnId`/`targetIndex` above: this
+    // request can set `completed` with or without also moving the task,
+    // and moving a task (via a plain drag, or the two dedicated calls
+    // below) never implicitly touches this field. See models/Task.js.
+    const completedResult = validateBooleanField(body.completed, { field: "completed" });
+    if (completedResult.error) return NextResponse.json({ error: completedResult.error }, { status: 400 });
+    task.completed = completedResult.value;
+  }
 
   return withMongoErrorHandling(async () => {
     if (destColumnId !== undefined) {
@@ -137,6 +159,12 @@ export async function DELETE(req, { params }) {
 
   const access = await getTaskAccess(id, userId);
   if (!access) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!canEditProject(access.project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to delete this task. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   return withMongoErrorHandling(async () => {
     // The deleted document isn't used for anything here, but

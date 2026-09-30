@@ -12,6 +12,8 @@ import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
 import DownloadIcon from "@mui/icons-material/Download";
 import DeleteIcon from "@mui/icons-material/Delete";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import ColorSwatchPicker from "@/components/ColorSwatchPicker";
 import { FieldLabel } from "@/components/FormField";
@@ -22,6 +24,8 @@ import {
   MAX_TOTAL_ATTACHMENTS_SIZE,
   MAX_ATTACHMENTS_PER_TASK,
   ALLOWED_TYPES_SUMMARY,
+  ATTACHMENT_ACCEPT,
+  isAllowedAttachmentExtension,
 } from "@/lib/attachmentPolicy";
 
 function formatSize(bytes) {
@@ -33,7 +37,7 @@ function formatSize(bytes) {
 const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
 const MAX_TOTAL_SIZE_MB = MAX_TOTAL_ATTACHMENTS_SIZE / (1024 * 1024);
 
-export default function TaskDetailDialog({ task, columns, assignableUsers, onClose, onChanged, onDeleted }) {
+export default function TaskDetailDialog({ task, columns, assignableUsers, canEdit = true, onClose, onChanged, onDeleted, onToggleComplete, onRequestChange }) {
   const isMounted = useIsMounted();
   // Each of these fields (color/column/assignees) saves on every change,
   // with no "submit" step — so a second change can start before the
@@ -187,6 +191,10 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
 
     setUploadError("");
 
+    if (!isAllowedAttachmentExtension(file.name)) {
+      setUploadError(`"${file.name}" isn't a supported file type.`);
+      return;
+    }
     if (file.size > MAX_FILE_SIZE) {
       setUploadError(`"${file.name}" is larger than the ${MAX_FILE_SIZE_MB}MB limit per file.`);
       return;
@@ -248,7 +256,22 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
 
   return (
     <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
-      <DialogTitle sx={{ overflowWrap: "anywhere" }}>
+      <DialogTitle sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "flex-start", gap: 1 }}>
+        <IconButton
+          size="small"
+          onClick={() => (canEdit ? onToggleComplete(task) : onRequestChange(task))}
+          aria-label={
+            canEdit
+              ? task.completed
+                ? `Mark "${task.title}" as not completed`
+                : `Mark "${task.title}" as completed`
+              : `Request marking "${task.title}" as completed`
+          }
+          sx={{ p: 0.5, mt: 0.25, color: task.completed ? "success.main" : "text.secondary", flexShrink: 0 }}
+        >
+          {task.completed ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 22 }} />}
+        </IconButton>
+        <Box sx={{ minWidth: 0, flexGrow: 1 }}>
         {editingTitle ? (
           <TextField
             autoFocus
@@ -274,29 +297,36 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         ) : (
           <Typography
             component="span"
-            role="button"
-            tabIndex={0}
+            role={canEdit ? "button" : undefined}
+            tabIndex={canEdit ? 0 : undefined}
             variant="inherit"
-            title="Click to rename"
-            aria-label={`Rename task ${task.title}`}
-            onClick={startEditingTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                startEditingTitle();
-              }
-            }}
+            title={canEdit ? "Click to rename" : undefined}
+            aria-label={canEdit ? `Rename task ${task.title}` : undefined}
+            onClick={canEdit ? startEditingTitle : undefined}
+            onKeyDown={
+              canEdit
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      startEditingTitle();
+                    }
+                  }
+                : undefined
+            }
             sx={{
               display: "inline-block",
-              cursor: "text",
+              cursor: canEdit ? "text" : "default",
               borderRadius: 0.5,
-              "&:hover": { color: "primary.main" },
-              "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+              textDecoration: task.completed ? "line-through" : "none",
+              color: task.completed ? "text.secondary" : "text.primary",
+              "&:hover": canEdit ? { color: "primary.main" } : undefined,
+              "&:focus-visible": canEdit ? { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } : undefined,
             }}
           >
             {task.title}
           </Typography>
         )}
+        </Box>
       </DialogTitle>
       <DialogContent>
         {task.description && (
@@ -306,7 +336,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         )}
 
         {actionError && (
-          <Alert severity="error" sx={{ mb: 2.5 }} onClose={() => setActionError("")}>
+          <Alert severity="error" className="tf-shake" sx={{ mb: 2.5 }} onClose={() => setActionError("")}>
             {actionError}
           </Alert>
         )}
@@ -317,6 +347,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
             labelId="edit-column-label"
             value={columnId}
             onChange={(e) => saveColumn(e.target.value)}
+            disabled={!canEdit}
           >
             {columns.map((c) => (
               <MenuItem key={c.id} value={c.id}>
@@ -340,6 +371,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
             value={assigneeIds}
             onChange={(e) => saveAssignees(e.target.value)}
             input={<OutlinedInput />}
+            disabled={!canEdit}
             renderValue={(selected) =>
               selected.length === 0 ? (
                 <Typography component="span" variant="body2" color="text.secondary">Nobody</Typography>
@@ -369,7 +401,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
 
         <FieldLabel component="div">Color</FieldLabel>
         <Box sx={{ mb: 3 }}>
-          <ColorSwatchPicker value={color} onChange={saveColor} />
+          <ColorSwatchPicker value={color} onChange={saveColor} disabled={!canEdit} />
         </Box>
 
         <Divider sx={{ mb: 2.5 }} />
@@ -378,16 +410,18 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
           <Typography variant="h6" component="h3" sx={{ fontSize: "0.9375rem" }}>
             Attachments
           </Typography>
-          <Button
-            size="small"
-            color="primary"
-            component="label"
-            startIcon={uploading ? <CircularProgress size={14} /> : <UploadFileIcon sx={{ fontSize: 18 }} />}
-            disabled={uploading || task.attachments.length >= MAX_ATTACHMENTS_PER_TASK}
-          >
-            {uploading ? "Uploading..." : "Add file"}
-            <input ref={fileInputRef} type="file" hidden onChange={handleUpload} />
-          </Button>
+          {canEdit && (
+            <Button
+              size="small"
+              color="primary"
+              component="label"
+              startIcon={uploading ? <CircularProgress size={14} /> : <UploadFileIcon sx={{ fontSize: 18 }} />}
+              disabled={uploading || task.attachments.length >= MAX_ATTACHMENTS_PER_TASK}
+            >
+              {uploading ? "Uploading..." : "Add file"}
+              <input ref={fileInputRef} type="file" hidden accept={ATTACHMENT_ACCEPT} onChange={handleUpload} />
+            </Button>
+          )}
         </Box>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
@@ -396,7 +430,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         </Typography>
 
         {uploadError && (
-          <Alert severity="error" sx={{ mb: 1 }} onClose={() => setUploadError("")}>
+          <Alert severity="error" className="tf-shake" sx={{ mb: 1 }} onClose={() => setUploadError("")}>
             {uploadError}
           </Alert>
         )}
@@ -436,16 +470,18 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
                     >
                       <DownloadIcon fontSize="small" />
                     </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setDeleteAttachmentError("");
-                        setConfirmDeleteAttachment(a);
-                      }}
-                      aria-label={`Delete ${a.filename}`}
-                    >
-                      <DeleteIcon fontSize="small" />
-                    </IconButton>
+                    {canEdit && (
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setDeleteAttachmentError("");
+                          setConfirmDeleteAttachment(a);
+                        }}
+                        aria-label={`Delete ${a.filename}`}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    )}
                   </Box>
                 }
                 sx={{ pr: 10 }}
@@ -465,15 +501,21 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, onClo
         )}
       </DialogContent>
       <DialogActions sx={{ justifyContent: "space-between" }}>
-        <Button
-          color="error"
-          onClick={() => {
-            setDeleteTaskError("");
-            setConfirmDeleteTask(true);
-          }}
-        >
-          Delete task
-        </Button>
+        {canEdit ? (
+          <Button
+            color="error"
+            onClick={() => {
+              setDeleteTaskError("");
+              setConfirmDeleteTask(true);
+            }}
+          >
+            Delete task
+          </Button>
+        ) : (
+          <Button color="inherit" onClick={() => onRequestChange(task)}>
+            Request a change
+          </Button>
+        )}
         <Button onClick={onClose} variant="outlined" color="inherit">
           Close
         </Button>

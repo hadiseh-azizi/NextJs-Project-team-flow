@@ -38,7 +38,7 @@ export default function RenameDialog({ open, title, label, value, onSave, onClos
             sx={{ mt: 1 }}
           />
           {error && (
-            <Alert severity="error" sx={{ mt: 2 }}>
+            <Alert severity="error" className="tf-shake" sx={{ mt: 2 }}>
               {error}
             </Alert>
           )}

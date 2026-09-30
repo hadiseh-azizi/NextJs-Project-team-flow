@@ -6,7 +6,10 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // raw mongoose.startSession()/session.withTransaction() pair instead of
 // the shared withOptionalTransaction() helper (lib/mongoTransaction.js):
 //
-//   - POST   /api/projects                     (project + default columns)
+//   - POST   /api/projects                     (project + default columns —
+//                                                 see note below: this route
+//                                                 no longer uses a
+//                                                 transaction at all)
 //   - DELETE /api/projects/[id]                 (cascading project delete)
 //   - DELETE /api/teams/[id]/members            (member removal + unassign)
 //   - POST   /api/auth/register                 (already covered by its own
@@ -22,6 +25,14 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // a standalone `mongod`. Each test below simulates exactly that server
 // response and asserts the route still completes successfully via the
 // fallback path, with the correct writes applied without any session.
+//
+// Project creation no longer creates any columns (see the "Boards,
+// Completed columns & task completion" changelog entry) — a project starts
+// with no board at all, and the user adds one explicitly. POST
+// /api/projects is now a single Project.create() with no transaction to
+// fall back from, so its test below no longer needs the no-transaction-
+// support mongoose fake; it's kept in this file because it's the same
+// route the rest of this audit is about.
 
 const TRANSACTIONS_UNSUPPORTED_ERROR = new Error(
   "Transaction numbers are only allowed on a replica set member or mongos"
@@ -48,9 +59,8 @@ function fakeReq(body) {
   console.log("Transaction fallback behavior for standalone MongoDB (the audit's headline finding)");
 
   // ---- POST /api/projects -------------------------------------------
-  await test("project creation succeeds without a session when transactions aren't supported", async () => {
+  await test("project creation succeeds and creates no board/columns", async () => {
     resetModuleCache();
-    mockModule("mongoose", fakeMongooseNoTransactionSupport());
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: "111111111111111111111111" } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/lib/authz", {
@@ -59,33 +69,37 @@ function fakeReq(body) {
     });
 
     let createdProject = null;
-    let insertedColumns = null;
     mockModule("@/models/Team", { findById: () => ({ lean: async () => ({ _id: "222222222222222222222222", manager: "111111111111111111111111" }) }) });
     mockModule("@/models/Project", {
-      create: async (docsArray, opts) => {
-        assert.strictEqual(opts.session, undefined); // no session on the fallback path
-        createdProject = { _id: "333333333333333333333333", ...docsArray[0] };
-        return [createdProject];
+      create: async (doc) => {
+        createdProject = { _id: "333333333333333333333333", ...doc };
+        return createdProject;
       },
       findById: () => ({
         populate: function () { return this; },
         lean: async () => ({ ...createdProject, createdAt: new Date(), manager: { _id: "111111111111111111111111" }, team: { _id: "222222222222222222222222", members: [] } }),
       }),
     });
+    let columnInsertCalled = false;
     mockModule("@/models/Column", {
-      insertMany: async (docs, opts) => {
-        assert.strictEqual(opts.session, undefined);
-        insertedColumns = docs;
-        return docs.map((d, i) => ({ _id: `col${i}`, ...d }));
+      insertMany: async () => {
+        columnInsertCalled = true;
+        return [];
       },
+      create: async () => {
+        columnInsertCalled = true;
+        return {};
+      },
+      find: () => ({ lean: async () => [] }),
     });
 
     const { POST } = require("../src/app/api/projects/route.js");
     const res = await POST(fakeReq({ name: "New Project", teamId: "222222222222222222222222" }));
     const json = await res.json();
     assert.strictEqual(res.status, 201, `expected 201, got ${res.status}: ${JSON.stringify(json)}`);
-    assert.ok(createdProject, "project should have been created via the fallback path");
-    assert.strictEqual(insertedColumns.length, 3, "default columns should still be created without a session");
+    assert.ok(createdProject, "project should have been created");
+    assert.strictEqual(columnInsertCalled, false, "project creation must not create any columns — a project starts with no board");
+    assert.deepStrictEqual(json.columns, [], "a freshly created project has no columns/board yet");
   });
 
   // ---- DELETE /api/projects/[id] -------------------------------------

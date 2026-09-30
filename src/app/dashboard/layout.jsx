@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Container } from "@mui/material";
 import { authOptions } from "@/lib/auth";
 import Navbar from "@/components/Navbar";
+import PageTransition from "@/components/PageTransition";
 
 export default async function DashboardLayout({ children }) {
   const session = await getServerSession(authOptions);
@@ -12,7 +13,7 @@ export default async function DashboardLayout({ children }) {
     <>
       <Navbar userName={session.user.name || ""} />
       <Container component="main" maxWidth="lg" sx={{ pt: { xs: 3, md: 5 }, pb: { xs: 6, md: 8 } }}>
-        {children}
+        <PageTransition>{children}</PageTransition>
       </Container>
     </>
   );

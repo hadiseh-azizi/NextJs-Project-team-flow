@@ -68,6 +68,7 @@ function setupMocks({ tasks, createShouldFail = false }) {
   mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
   mockModule("@/lib/mongodb", { connectDB: async () => {} });
   mockModule("@/lib/authz", {
+    canEditProject: () => true,
     getAccessibleProject: async () => ({ _id: PROJECT_ID, team: { members: [] } }),
     validateAssignees: () => ({ assignees: [] }),
   });

@@ -5,25 +5,77 @@ import { connectDB } from "@/lib/mongodb";
 import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
-import { getAccessibleProject, validateAssignees } from "@/lib/authz";
+import { getAccessibleProject, validateAssignees, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString, validateOptionalString, validateOptionalDate, validateOptionalEnumValue } from "@/lib/validation";
 import { TASK_COLORS } from "@/lib/taskColors";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { nextOrderForNewTask, withOptionalTransaction } from "@/lib/taskOrdering";
+import { readFormDataWithLimit, PayloadTooLargeError } from "@/lib/limitedFormData";
+import {
+  MAX_FILE_SIZE,
+  MAX_TOTAL_ATTACHMENTS_SIZE,
+  MAX_ATTACHMENTS_PER_TASK,
+  MAX_CREATE_UPLOAD_REQUEST_SIZE,
+  ALLOWED_TYPES_SUMMARY,
+  sanitizeFilename,
+  resolveAttachmentMimeType,
+  validateAttachmentFile,
+} from "@/lib/attachmentPolicy";
 
 const MAX_TASK_TITLE_LENGTH = 200;
 const MAX_TASK_DESCRIPTION_LENGTH = 5000;
 const TASK_COLOR_KEYS = TASK_COLORS.map((c) => c.key);
+
+// Task creation accepts either a plain JSON body (the original, still-
+// supported shape) or a multipart/form-data body carrying a "data" field
+// (the same JSON payload, stringified) plus zero or more "files" parts —
+// used only when the client is attaching files at creation time. Every
+// existing JSON caller (including the manual test harness's fakeReq,
+// which has no `.headers`) is completely unaffected: the multipart branch
+// is only taken when the content-type says so.
+function isMultipartRequest(req) {
+  const contentType = req.headers?.get?.("content-type") || "";
+  return contentType.toLowerCase().includes("multipart/form-data");
+}
 
 export async function POST(req) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   const userId = session.user.id;
 
-  const body = await parseJsonBody(req);
-  if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  let body;
+  let incomingFiles = [];
+
+  if (isMultipartRequest(req)) {
+    let formData;
+    try {
+      formData = await readFormDataWithLimit(req, MAX_CREATE_UPLOAD_REQUEST_SIZE);
+    } catch (err) {
+      if (err instanceof PayloadTooLargeError) {
+        return NextResponse.json({ error: "The attached files are too large" }, { status: 413 });
+      }
+      return NextResponse.json({ error: "The upload couldn't be read. Please try again." }, { status: 400 });
+    }
+
+    const raw = formData.get("data");
+    if (typeof raw !== "string") return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
+    // Every non-string entry under "files" is a real upload; a client
+    // sending none is the common case (creating a task with no attachments
+    // via the same multipart shape isn't required, but is handled the same
+    // as if it had used the JSON path).
+    incomingFiles = formData.getAll("files").filter((f) => f && typeof f !== "string");
+  } else {
+    body = await parseJsonBody(req);
+    if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
   const { projectId, columnId, assigneeIds } = body;
 
   const titleResult = validateRequiredString(body.title, { field: "Task title", maxLength: MAX_TASK_TITLE_LENGTH });
@@ -45,10 +97,64 @@ export async function POST(req) {
     return NextResponse.json({ error: "Invalid project or column" }, { status: 400 });
   }
 
+  // Attachments selected at creation time go through the exact same
+  // per-file checks (size, extension/MIME pairing, magic-byte signature)
+  // and the same running-total/count caps as the post-creation upload
+  // route (see app/api/tasks/[id]/attachments/route.js) — just evaluated
+  // against 0 pre-existing attachments, since the task doesn't exist yet.
+  // Validated in full before anything touches the database, same as the
+  // field validation above, so a bad file never leaves behind a task.
+  if (incomingFiles.length > MAX_ATTACHMENTS_PER_TASK) {
+    return NextResponse.json(
+      { error: `A task cannot have more than ${MAX_ATTACHMENTS_PER_TASK} attachments` },
+      { status: 400 }
+    );
+  }
+
+  const attachmentsToCreate = [];
+  let runningTotal = 0;
+  for (const file of incomingFiles) {
+    if (file.size <= 0) {
+      return NextResponse.json({ error: `"${file.name}" is empty` }, { status: 400 });
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: `"${file.name}" is larger than the allowed 5MB per file` }, { status: 400 });
+    }
+    runningTotal += file.size;
+    if (runningTotal > MAX_TOTAL_ATTACHMENTS_SIZE) {
+      return NextResponse.json(
+        { error: "The selected files exceed the 8MB total attachment limit for a task" },
+        { status: 400 }
+      );
+    }
+
+    const filename = sanitizeFilename(file.name);
+    const declaredMimeType = typeof file.type === "string" ? file.type.split(";")[0].trim().toLowerCase() : "";
+    // Source-code files get a server-chosen type (browsers report these
+    // inconsistently); every other type must still match what was declared.
+    const mimeType = resolveAttachmentMimeType(filename, declaredMimeType);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const validation = validateAttachmentFile(filename, mimeType, buffer);
+    if (!validation.ok) {
+      return NextResponse.json(
+        { error: `"${filename}": ${validation.error} Allowed: ${ALLOWED_TYPES_SUMMARY}.` },
+        { status: 400 }
+      );
+    }
+
+    attachmentsToCreate.push({ filename, mimeType, size: file.size, data: buffer.toString("base64") });
+  }
+
   await connectDB();
 
   const project = await getAccessibleProject(projectId, userId);
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to add tasks to this project. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   // A task can only be assigned to people who actually belong to this
   // project's team (or its manager) — same rule the update route enforces.
@@ -117,6 +223,7 @@ export async function POST(req) {
               dueDate: dueDateResult.value ?? null,
               color: colorResult.value ?? null,
               order,
+              attachments: attachmentsToCreate,
             },
           ],
           { session: session ?? undefined }
@@ -130,8 +237,9 @@ export async function POST(req) {
       throw err;
     }
 
-    // toTaskDTO() never includes attachment `data` (a brand-new task has
-    // none anyway), so there's nothing to gain by selecting it here.
+    // toTaskDTO() never includes attachment `data`, so even when the new
+    // task was created with attachments there's nothing to gain by
+    // selecting it back out of MongoDB here.
     const populated = await Task.findById(task._id)
       .select("-attachments.data")
       .populate("assignees", "name")

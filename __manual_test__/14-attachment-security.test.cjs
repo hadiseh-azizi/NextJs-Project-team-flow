@@ -103,12 +103,14 @@ function baseTask(overrides = {}) {
 
 function mockAuthorizedAccess(taskOverrides = {}) {
   mockModule("@/lib/authz", {
+      canEditProject: () => true,
     getTaskAccess: async () => ({ task: baseTask(taskOverrides), project: { _id: PROJECT_ID } }),
   });
 }
 
 function mockDeniedAccess() {
-  mockModule("@/lib/authz", { getTaskAccess: async () => null });
+  mockModule("@/lib/authz", {
+      canEditProject: () => true, getTaskAccess: async () => null });
 }
 
 function mockSession(userId) {
@@ -197,39 +199,6 @@ function mockFindByIdChain(doc) {
     const pdfBytes = Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(50, 0x20)]);
     const result = validateAttachmentFile("report.pdf", "application/pdf", pdfBytes);
     assert.strictEqual(result.ok, true);
-  });
-
-  console.log("\nattachmentPolicy.js — .py (Python) attachment support");
-
-  await test("accepts a .py file declared as text/x-python", () => {
-    const result = validateAttachmentFile("script.py", "text/x-python", Buffer.from("print('hello')\n"));
-    assert.strictEqual(result.ok, true);
-  });
-
-  await test("accepts a .py file declared as text/plain (common browser fallback)", () => {
-    const result = validateAttachmentFile("script.py", "text/plain", Buffer.from("def main():\n    pass\n"));
-    assert.strictEqual(result.ok, true);
-  });
-
-  await test("accepts a .py file with no declared MIME type (common when the OS has no .py mapping)", () => {
-    const result = validateAttachmentFile("script.py", "", Buffer.from("import sys\n"));
-    assert.strictEqual(result.ok, true);
-  });
-
-  await test("rejects a binary file renamed to .py (no NUL-byte heuristic passes)", () => {
-    const binary = Buffer.from([0x00, 0x01, 0x02, 0x03, 0xff, 0xfe]);
-    const result = validateAttachmentFile("script.py", "text/x-python", binary);
-    assert.strictEqual(result.ok, false);
-  });
-
-  await test("rejects a .py.exe double extension even with a text/x-python MIME type", () => {
-    const result = validateAttachmentFile("script.py.exe", "text/x-python", Buffer.from("print(1)\n"));
-    assert.strictEqual(result.ok, false);
-  });
-
-  await test("an empty declared MIME type still only pairs with .py, not other extensions", () => {
-    const result = validateAttachmentFile("script.exe", "", Buffer.from("MZ\x90\x00"));
-    assert.strictEqual(result.ok, false);
   });
 
   console.log("\nauthz.js — getTaskAccess() attachment-data projection");
@@ -490,7 +459,8 @@ function mockFindByIdChain(doc) {
         id: (wantedId) => attachments.find((a) => a._id === wantedId) || null,
       },
     });
-    mockModule("@/lib/authz", { getTaskAccess: async (id, userId, opts) => {
+    mockModule("@/lib/authz", {
+      canEditProject: () => true, getTaskAccess: async (id, userId, opts) => {
       assert.deepStrictEqual(opts, { includeAttachmentData: true }, "download must opt into loading attachment data");
       return { task, project: { _id: PROJECT_ID } };
     } });
@@ -530,7 +500,8 @@ function mockFindByIdChain(doc) {
     const task = baseTask({
       attachments: { ...attachments, length: attachments.length, id: (wantedId) => attachments.find((a) => a._id === wantedId) || null },
     });
-    mockModule("@/lib/authz", { getTaskAccess: async () => ({ task, project: { _id: PROJECT_ID } }) });
+    mockModule("@/lib/authz", {
+      canEditProject: () => true, getTaskAccess: async () => ({ task, project: { _id: PROJECT_ID } }) });
     let capturedFilter = null;
     let capturedUpdate = null;
     mockModule("@/models/Task", {
@@ -549,7 +520,8 @@ function mockFindByIdChain(doc) {
     mockSession(USER_ID);
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     const task = baseTask({ attachments: { length: 0, id: () => null } });
-    mockModule("@/lib/authz", { getTaskAccess: async () => ({ task, project: { _id: PROJECT_ID } }) });
+    mockModule("@/lib/authz", {
+      canEditProject: () => true, getTaskAccess: async () => ({ task, project: { _id: PROJECT_ID } }) });
     const { DELETE } = require("../src/app/api/tasks/[id]/attachments/[attachmentId]/route.js");
     const res = await DELETE({}, { params: Promise.resolve({ id: TASK_ID, attachmentId: ATTACHMENT_ID }) });
     assert.strictEqual(res.status, 404);

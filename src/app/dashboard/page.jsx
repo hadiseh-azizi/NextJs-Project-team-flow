@@ -5,7 +5,7 @@ import Project from "@/models/Project";
 import Task from "@/models/Task";
 import Column from "@/models/Column";
 import { toProjectDTO } from "@/lib/serialize";
-import { accessibleTeamIds } from "@/lib/authz";
+import { accessibleTeamIds, filterAccessibleProjects } from "@/lib/authz";
 import ProgressChart from "@/components/ProgressChart";
 import OverviewStats from "@/components/OverviewStats";
 import Link from "next/link";
@@ -14,6 +14,9 @@ import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 
 const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
+const MEMBERS_POPULATE = { path: "members", select: "name email" };
+
+export const metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -23,11 +26,17 @@ export default async function DashboardPage() {
 
   const teamIds = await accessibleTeamIds(userId);
 
-  const projects = await Project.find({ $or: [{ manager: userId }, { team: { $in: teamIds } }] })
+  // Only a candidate set — see the matching comment in
+  // GET /api/projects/route.js for why team membership alone isn't
+  // enough anymore, and why this still needs narrowing below.
+  const candidateProjects = await Project.find({ $or: [{ manager: userId }, { team: { $in: teamIds } }] })
     .populate("manager", "name email")
     .populate(TEAM_POPULATE)
+    .populate(MEMBERS_POPULATE)
     .sort({ createdAt: -1 })
     .lean();
+
+  const projects = filterAccessibleProjects(candidateProjects, userId);
 
   const projectIds = projects.map((p) => p._id);
   const [allColumns, allTasks] = await Promise.all([
@@ -74,10 +83,10 @@ export default async function DashboardPage() {
         <Grid container columnSpacing={{ md: 8 }} rowSpacing={{ xs: 5, md: 0 }}>
           {/* Each stat is a switch — choosing one lists what is behind it
               underneath (my open tasks / completed tasks / projects). */}
-          <Grid item xs={12} md={7}>
+          <Grid item xs={12} md={7} className="tf-fade-up">
             <OverviewStats projects={serialized} userId={userId} />
           </Grid>
-          <Grid item xs={12} md={5}>
+          <Grid item xs={12} md={5} className="tf-fade-up" sx={{ animationDelay: "60ms" }}>
             <Typography variant="h6" component="h2" sx={{ mb: 1.5 }}>
               Project progress
             </Typography>

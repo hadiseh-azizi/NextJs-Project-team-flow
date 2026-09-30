@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
-import { getTaskAccess } from "@/lib/authz";
+import { getTaskAccess, canEditProject } from "@/lib/authz";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { readFormDataWithLimit, PayloadTooLargeError } from "@/lib/limitedFormData";
 import {
@@ -14,6 +14,7 @@ import {
   MAX_UPLOAD_REQUEST_SIZE,
   ALLOWED_TYPES_SUMMARY,
   sanitizeFilename,
+  resolveAttachmentMimeType,
   validateAttachmentFile,
 } from "@/lib/attachmentPolicy";
 
@@ -49,7 +50,13 @@ export async function POST(req, { params }) {
   // are never read here, so getTaskAccess doesn't load them.
   const access = await getTaskAccess(id, userId);
   if (!access) return NextResponse.json({ error: "Access denied" }, { status: 403 });
-  const { task } = access;
+  const { task, project } = access;
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to add attachments to this task. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   const file = formData.get("file");
   if (!file || typeof file === "string") {
@@ -69,7 +76,10 @@ export async function POST(req, { params }) {
   }
 
   const filename = sanitizeFilename(file.name);
-  const mimeType = typeof file.type === "string" ? file.type.split(";")[0].trim().toLowerCase() : "";
+  const declaredMimeType = typeof file.type === "string" ? file.type.split(";")[0].trim().toLowerCase() : "";
+  // Source-code files get a server-chosen type (browsers report these
+  // inconsistently); every other type must still match what was declared.
+  const mimeType = resolveAttachmentMimeType(filename, declaredMimeType);
 
   // Extension/MIME pairing is checked before reading the file into memory;
   // the actual byte signature is checked just below, once we have the

@@ -6,6 +6,7 @@ import { normalizeEmail } from "@/lib/normalizeEmail";
 import { getAuthSecret } from "@/lib/authSecret";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/clientIp";
+import { consumeAutoLoginToken } from "@/lib/autoLoginToken";
 
 // A precomputed bcrypt hash of a fixed, unused string — never compared
 // against a real password, and no real account uses it. Its only job is
@@ -29,6 +30,15 @@ const DUMMY_PASSWORD_HASH = "$2a$12$umFwSnc/OJfL6r0Zcxv.3e6AudQMfHUgSwEHIkbrOu3q
 const LOGIN_EMAIL_LIMIT = { max: 10, windowMs: 15 * 60 * 1000 };
 const LOGIN_IP_LIMIT = { max: 30, windowMs: 15 * 60 * 1000 };
 
+// The auto-login path (see the branch at the top of authorize() below)
+// has no client-supplied email to key a limit on — by design, it never
+// trusts one — so this is IP-only. A real auto-login token is 256 bits
+// of randomness, not brute-forceable in any practical sense; this limit
+// exists purely to cap how many wasted DB lookups one source can cause
+// by hammering the endpoint with junk tokens, not because the token
+// itself is guessable.
+const AUTO_LOGIN_IP_LIMIT = { max: 20, windowMs: 15 * 60 * 1000 };
+
 export const authOptions = {
   secret: getAuthSecret(),
   session: { strategy: "jwt" },
@@ -39,12 +49,49 @@ export const authOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
+        // Only ever sent by the verify-email page, immediately after a
+        // successful first-time verification — see the branch at the
+        // top of authorize() below. Mutually exclusive with email/
+        // password: this is a distinct, single-use authorization, not a
+        // second password.
+        autoLoginToken: { label: "Auto Login Token", type: "text" },
       },
       // NextAuth passes a second `req` argument alongside the submitted
       // credentials — a plain `{ query, body, headers, method }` object,
       // not a Fetch `Request` — which is where the source IP comes from
       // for the per-IP rate limit below.
       async authorize(credentials, req) {
+        // Automatic sign-in right after email verification: the
+        // verify-email page calls signIn("credentials", { autoLoginToken })
+        // with no email/password at all. This branch never trusts a
+        // client-supplied email or user id — the only identity that
+        // matters is whichever userId consumeAutoLoginToken() resolves
+        // the (single-use, short-lived) token to server-side — so a
+        // tampered request can authenticate at most the one account the
+        // token was actually issued for, never an arbitrary other one.
+        if (typeof credentials?.autoLoginToken === "string" && credentials.autoLoginToken) {
+          const ip = getClientIp(req?.headers);
+
+          await connectDB();
+
+          const ipLimit = ip === "unknown" ? null : await checkRateLimit(`auto-login:ip:${ip}`, AUTO_LOGIN_IP_LIMIT);
+          if (ipLimit?.limited) {
+            throw new Error("TooManyAttempts");
+          }
+
+          const userId = await consumeAutoLoginToken(credentials.autoLoginToken);
+          if (!userId) return null;
+
+          const user = await User.findById(userId).lean();
+          // Re-checks emailVerified even though createAutoLoginToken() is
+          // only ever called right after the verify-email route just set
+          // it — belt-and-braces against any future caller of
+          // createAutoLoginToken() that doesn't make the same guarantee.
+          if (!user || !user.emailVerified) return null;
+
+          return { id: String(user._id), name: user.name, email: user.email };
+        }
+
         if (typeof credentials?.email !== "string" || typeof credentials?.password !== "string") {
           return null;
         }

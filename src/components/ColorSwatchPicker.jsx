@@ -18,20 +18,22 @@ const swatchBaseSx = {
   "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px" },
 };
 
-export default function ColorSwatchPicker({ value, onChange }) {
+export default function ColorSwatchPicker({ value, onChange, disabled = false }) {
   const { mode } = useThemeMode();
 
   return (
-    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, opacity: disabled ? 0.5 : 1 }}>
       <Tooltip title="No color">
         <Box
           component="button"
           type="button"
+          disabled={disabled}
           onClick={() => onChange(null)}
           aria-label="No color"
           aria-pressed={!value}
           sx={{
             ...swatchBaseSx,
+            cursor: disabled ? "default" : "pointer",
             border: "1.5px solid",
             borderColor: !value ? "primary.main" : "line.strong",
             display: "flex",
@@ -39,7 +41,7 @@ export default function ColorSwatchPicker({ value, onChange }) {
             justifyContent: "center",
             bgcolor: "transparent",
             color: "text.secondary",
-            "&:hover": { borderColor: "text.secondary" },
+            "&:hover": disabled ? undefined : { borderColor: "text.secondary" },
           }}
         >
           <CloseIcon sx={{ fontSize: 14 }} />
@@ -50,16 +52,18 @@ export default function ColorSwatchPicker({ value, onChange }) {
           <Box
             component="button"
             type="button"
+            disabled={disabled}
             onClick={() => onChange(c.key)}
             aria-label={c.label}
             aria-pressed={value === c.key}
             sx={{
               ...swatchBaseSx,
+              cursor: disabled ? "default" : "pointer",
               bgcolor: mode === "dark" ? c.dark : c.light,
               border: "2px solid",
               borderColor: value === c.key ? "primary.main" : "transparent",
               boxShadow: "inset 0 0 0 1px rgba(30,27,22,0.14)",
-              "&:hover": { borderColor: value === c.key ? "primary.main" : "line.strong" },
+              "&:hover": disabled ? undefined : { borderColor: value === c.key ? "primary.main" : "line.strong" },
             }}
           />
         </Tooltip>

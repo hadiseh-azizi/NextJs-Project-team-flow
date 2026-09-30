@@ -89,7 +89,7 @@ function setupMocks({ columns, updateManyShouldFail = false }) {
   mockModule("mongoose", { ...realMongoose, startSession: world.mongooseMock.startSession });
   mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
   mockModule("@/lib/mongodb", { connectDB: async () => {} });
-  mockModule("@/lib/authz", { getAccessibleProject: async () => ({ _id: "p1" }) });
+  mockModule("@/lib/authz", { canEditProject: () => true, getAccessibleProject: async () => ({ _id: "p1" }) });
   mockModule("@/models/Task", { countDocuments: async () => 0 });
   mockModule("@/models/Column", world.ColumnModel);
   return world;

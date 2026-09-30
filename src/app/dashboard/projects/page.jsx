@@ -15,6 +15,18 @@ import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
+// Cards are square, so the column width is the card size: 260px is the
+// smallest square that still fits a two-line name, a three-line
+// description and the progress block without growing. One column on a
+// phone; the extra top gap leaves room for each card's team tab, which
+// sits above the card's own edge.
+const PROJECT_GRID_SX = {
+  display: "grid",
+  columnGap: 3,
+  rowGap: 3.5,
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))",
+};
+
 function ProjectsPageInner() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
@@ -177,17 +189,10 @@ function ProjectsPageInner() {
       </Dialog>
 
       {loading ? (
-        <Box aria-busy="true" aria-label="Loading projects">
+        <Box aria-busy="true" aria-label="Loading projects" sx={PROJECT_GRID_SX}>
           {[0, 1, 2].map((i) => (
-            <Box key={i} sx={{ py: 2, borderBottom: "1px solid", borderColor: "divider", display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 200px" }, columnGap: 6, rowGap: 1.5 }}>
-              <Box>
-                <Skeleton variant="text" width="40%" height={24} />
-                <Skeleton variant="text" width="22%" height={18} />
-              </Box>
-              <Box>
-                <Skeleton variant="rounded" height={4} sx={{ mt: 1 }} />
-                <Skeleton variant="text" width="45%" height={18} />
-              </Box>
+            <Box key={i} sx={{ pt: "25px" }}>
+              <Skeleton variant="rounded" sx={{ width: "100%", height: "auto", aspectRatio: "1 / 1" }} />
             </Box>
           ))}
         </Box>
@@ -218,9 +223,9 @@ function ProjectsPageInner() {
           />
         )
       ) : (
-        <Box component="ul" sx={{ listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" }}>
-          {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
+        <Box sx={PROJECT_GRID_SX}>
+          {projects.map((p, i) => (
+            <ProjectCard key={p.id} project={p} index={i} />
           ))}
         </Box>
       )}

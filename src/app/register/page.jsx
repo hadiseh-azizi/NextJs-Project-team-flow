@@ -72,7 +72,7 @@ function RegisterForm() {
       </Typography>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2.5 }}>
+        <Alert severity="error" className="tf-shake" sx={{ mb: 2.5 }}>
           {error}
         </Alert>
       )}

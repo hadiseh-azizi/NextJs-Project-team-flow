@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Column from "@/models/Column";
 import { toColumnDTO } from "@/lib/serialize";
-import { getAccessibleProject } from "@/lib/authz";
+import { getAccessibleProject, canEditProject } from "@/lib/authz";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
@@ -37,8 +37,9 @@ export async function createColumnWithNextOrder({ name, projectId }) {
   }
 }
 
-// Anyone who can see the project can add a column — deciding the board's
-// shape isn't a manager-only privilege, it's a team thing.
+// Anyone with edit permission on the project can add a column — deciding
+// the board's shape isn't manager-exclusive by default, it's a team
+// thing (see lib/authz.js's canEditProject for when it narrows).
 export async function POST(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -56,6 +57,12 @@ export async function POST(req, { params }) {
 
   const project = await getAccessibleProject(id, userId);
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  if (!canEditProject(project, userId)) {
+    return NextResponse.json(
+      { error: "You don't have permission to add columns to this project. Submit a change request instead." },
+      { status: 403 }
+    );
+  }
 
   return withMongoErrorHandling(async () => {
     const column = await createColumnWithNextOrder({ name: nameResult.value, projectId: id });

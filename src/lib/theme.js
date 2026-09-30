@@ -1,4 +1,12 @@
-import { createTheme, responsiveFontSizes, alpha } from "@mui/material/styles";
+import { createTheme, responsiveFontSizes, alpha, lighten, darken } from "@mui/material/styles";
+import Grow from "@mui/material/Grow";
+import { getAppearanceTheme, DEFAULT_APPEARANCE_THEME } from "@/lib/appearanceThemes";
+
+// Shared motion tokens — the same fast/normal/slow tiers used ad hoc as
+// ".12s" throughout this file's styleOverrides, named here for the few
+// places (dialogs, menus) that want a slightly longer, still-quick
+// duration than the instant hover/press feedback everything else uses.
+const MOTION = { fast: 120, normal: 200, slow: 280 };
 
 // Design direction: a warm paper canvas, hairline borders, and one deep
 // ochre accent that is reserved for the primary action, focus, and the
@@ -76,9 +84,33 @@ const DARK = {
 const SANS = "'Plus Jakarta Sans', Roboto, Arial, sans-serif";
 const SERIF = "'Fraunces', Georgia, serif";
 
-export function buildTheme(mode) {
+export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
   const dark = mode === "dark";
-  const t = dark ? DARK : LIGHT;
+  const base = dark ? DARK : LIGHT;
+
+  // The default appearance reproduces the constants above exactly — no
+  // recompute, no risk of drift for anyone who never opens the picker.
+  // Every other appearance overrides just the canvas/paper/accent trio;
+  // the handful of surfaces derived from those (overlay/sunken/input) are
+  // recomputed from them so contrast stays correct, while borders,
+  // status colors, and shadows stay the app's original neutral tones —
+  // those are structural, not brand-color, so they don't shift with the
+  // background.
+  let t = base;
+  if (appearanceThemeId !== DEFAULT_APPEARANCE_THEME) {
+    const swatch = getAppearanceTheme(appearanceThemeId)[dark ? "dark" : "light"];
+    t = {
+      ...base,
+      canvas: swatch.canvas,
+      paper: swatch.paper,
+      accent: swatch.accent,
+      accentHover: swatch.accentHover,
+      accentSoft: swatch.accentSoft,
+      overlay: dark ? lighten(swatch.paper, 0.02) : swatch.paper,
+      sunken: dark ? lighten(swatch.canvas, 0.02) : darken(swatch.canvas, 0.02),
+      input: dark ? lighten(swatch.canvas, 0.015) : swatch.paper,
+    };
+  }
 
   const focusRing = `2px solid ${t.accent}`;
 
@@ -129,7 +161,15 @@ export function buildTheme(mode) {
       MuiButtonBase: {
         defaultProps: { disableRipple: true },
         styleOverrides: {
-          root: { "&.Mui-focusVisible": { outline: focusRing, outlineOffset: 2 } },
+          root: {
+            "&.Mui-focusVisible": { outline: focusRing, outlineOffset: 2 },
+            // A small, uniform press feedback for every clickable surface
+            // built on ButtonBase (buttons, icon buttons, menu items, and
+            // the CardActionArea that wraps project/team cards) — never
+            // large enough to read as a "bounce".
+            transition: "transform 100ms ease",
+            "&:active:not(.Mui-disabled)": { transform: "scale(0.98)" },
+          },
         },
       },
       MuiButton: {
@@ -222,6 +262,15 @@ export function buildTheme(mode) {
         styleOverrides: { root: { backgroundColor: t.backdrop } },
       },
       MuiDialog: {
+        defaultProps: {
+          // Fade + a very slight scale (Grow) reads as an object settling
+          // into place, rather than the plain opacity-only fade MUI uses
+          // by default — applied here once so every dialog in the app
+          // (task detail, new task, confirmations, choice prompts) picks
+          // it up without each one wiring its own TransitionComponent.
+          TransitionComponent: Grow,
+          transitionDuration: { enter: MOTION.normal, exit: MOTION.fast },
+        },
         styleOverrides: {
           paper: {
             borderRadius: 8,
@@ -243,12 +292,14 @@ export function buildTheme(mode) {
         styleOverrides: { root: { padding: "16px 24px 20px", gap: 8, "& > :not(:first-of-type)": { marginLeft: 0 } } },
       },
       MuiMenu: {
+        defaultProps: { transitionDuration: MOTION.fast },
         styleOverrides: {
           paper: { borderRadius: 8, border: `1px solid ${t.line}`, backgroundColor: t.overlay, boxShadow: t.shadow.raised },
           list: { padding: 4 },
         },
       },
       MuiPopover: {
+        defaultProps: { transitionDuration: MOTION.fast },
         styleOverrides: {
           paper: { boxShadow: t.shadow.raised },
         },
@@ -329,7 +380,12 @@ export function buildTheme(mode) {
       MuiLinearProgress: {
         styleOverrides: {
           root: { height: 4, borderRadius: 2, backgroundColor: t.progressTrack },
-          bar: { borderRadius: 2 },
+          // MUI already transitions a determinate bar's width on value
+          // change; this just gives that built-in transition the same
+          // easing/duration as the rest of the app instead of its default
+          // linear timing, so a progress jump (e.g. 25% -> 40%) settles
+          // rather than snapping.
+          bar: { borderRadius: 2, transition: `transform ${MOTION.slow}ms cubic-bezier(0.4, 0, 0.2, 1)` },
         },
       },
       MuiSkeleton: {

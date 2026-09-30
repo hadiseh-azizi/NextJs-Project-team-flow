@@ -3,8 +3,19 @@ import ThemeRegistry from "@/components/ThemeRegistry";
 import "./globals.css";
 
 export const metadata = {
-  title: "TeamFlow — Project & Team Management",
+  // `template` gives every child route's plain title ("Sign In") the
+  // "Page | Team Flow" format; `default` is the landing page's bare title.
+  title: { default: "Team Flow", template: "%s | Team Flow" },
   description: "Kanban boards, multi-project management, and team progress reports",
+  // Symbol-only icons; the wordmark never appears at favicon size.
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/brand/icon-32.png", sizes: "32x32", type: "image/png" },
+      { url: "/brand/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 // Runs before hydration so the correct theme is on screen from the very
@@ -22,6 +33,12 @@ const THEME_INIT_SCRIPT = `
     document.documentElement.setAttribute("data-theme-mode", mode);
   } catch (e) {
     document.documentElement.setAttribute("data-theme-mode", "light");
+  }
+  try {
+    var storedAppearance = localStorage.getItem("teamflow-appearance-theme");
+    document.documentElement.setAttribute("data-appearance-theme", storedAppearance || "default");
+  } catch (e) {
+    document.documentElement.setAttribute("data-appearance-theme", "default");
   }
 })();
 `;

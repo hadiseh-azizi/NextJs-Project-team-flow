@@ -5,6 +5,7 @@ import { verifyVerificationToken } from "@/lib/verificationToken";
 import { normalizeEmail } from "@/lib/normalizeEmail";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { isValidObjectId } from "@/lib/objectId";
+import { createAutoLoginToken } from "@/lib/autoLoginToken";
 
 function invalidTokenResponse() {
   return NextResponse.json({ error: "This verification link is invalid or has expired" }, { status: 400 });
@@ -66,5 +67,19 @@ export async function POST(req) {
     return invalidTokenResponse();
   }
 
-  return NextResponse.json({ ok: true });
+  // Verification has already succeeded and is committed above — a
+  // failure in this step is an auto-sign-in problem, not a verification
+  // one, so it must not turn an already-successful verification into an
+  // error response. Best-effort, same reasoning as the verification
+  // emails elsewhere in this file's neighbors (register/resend): omit
+  // autoLoginToken on failure rather than 500ing, and let the
+  // verify-email page fall back to "please sign in manually".
+  let autoLoginToken = null;
+  try {
+    autoLoginToken = await createAutoLoginToken(user._id);
+  } catch (err) {
+    console.error("[auth/verify-email] Failed to create auto-login token:", err);
+  }
+
+  return NextResponse.json({ ok: true, autoLoginToken });
 }

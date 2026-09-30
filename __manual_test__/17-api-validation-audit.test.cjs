@@ -139,6 +139,7 @@ function fakeReq(body) {
 
   function taskAccessMock() {
     return {
+      canEditProject: () => true,
       getTaskAccess: async () => ({
         task: { _id: TASK_ID, project: PROJECT_ID },
         project: { _id: PROJECT_ID, manager: OID_A, team: { members: [] } },
@@ -210,6 +211,7 @@ function fakeReq(body) {
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: OID_A } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/lib/authz", {
+      canEditProject: () => true,
       getAccessibleProject: async () => ({ _id: PROJECT_ID, manager: OID_A, team: { members: [] } }),
       validateAssignees: (project, assigneeIds) => {
         if (!Array.isArray(assigneeIds)) return { error: "assigneeIds must be an array" };
@@ -232,7 +234,8 @@ function fakeReq(body) {
     resetModuleCache();
     mockModule("next-auth", { getServerSession: async () => ({ user: { id: OID_A } }) });
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/lib/authz", { getAccessibleProject: async () => ({ _id: PROJECT_ID }) });
+    mockModule("@/lib/authz", {
+      canEditProject: () => true, getAccessibleProject: async () => ({ _id: PROJECT_ID }) });
     mockModule("@/models/Column", {
       findOne: () => ({ lean: async () => ({ _id: OID_B, project: PROJECT_ID, name: "To Do" }) }),
     });

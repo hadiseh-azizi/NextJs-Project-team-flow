@@ -3,12 +3,15 @@
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from "recharts";
 import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
+import { projectProgress } from "@/lib/taskCompletion";
+import { useReducedMotion } from "@/lib/useReducedMotion";
 
 const ROW_HEIGHT = 36;
 const MAX_NAME = 18;
 
 export default function ProgressChart({ projects }) {
   const theme = useTheme();
+  const reducedMotion = useReducedMotion();
 
   // The props come from toProjectDTO(), which always supplies `tasks`,
   // `columns` and `name` — but a single malformed entry (or a missing
@@ -19,15 +22,12 @@ export default function ProgressChart({ projects }) {
     .filter(Boolean)
     .map((p) => {
       const tasks = Array.isArray(p.tasks) ? p.tasks : [];
-      const columns = Array.isArray(p.columns) ? p.columns : [];
-      const total = tasks.length;
-      const doneColumnIds = new Set(columns.filter((c) => c?.isDoneColumn).map((c) => c.id));
-      const done = tasks.filter((t) => doneColumnIds.has(t?.columnId)).length;
+      const { total, done, pct } = projectProgress(tasks);
       const name = typeof p.name === "string" && p.name ? p.name : "Untitled";
       return {
         fullName: name,
         name: name.length > MAX_NAME ? name.slice(0, MAX_NAME - 1) + "…" : name,
-        progress: total ? Math.round((done / total) * 100) : 0,
+        progress: pct,
         done,
         total,
       };
@@ -75,7 +75,12 @@ export default function ProgressChart({ projects }) {
             barSize={10}
             radius={[0, 3, 3, 0]}
             background={{ fill: theme.palette.mode === "dark" ? "#332E22" : "#ECE8DD", radius: 3 }}
-            isAnimationActive={false}
+            // Animates both on first render and when a value changes (a
+            // task getting checked off moves its project's bar), skipped
+            // entirely when the person has asked for reduced motion.
+            isAnimationActive={!reducedMotion}
+            animationDuration={450}
+            animationEasing="ease-out"
           >
             {data.map((entry, i) => (
               <Cell key={i} fill={entry.progress === 100 ? theme.palette.success.main : theme.palette.primary.main} />

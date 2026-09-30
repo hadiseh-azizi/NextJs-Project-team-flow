@@ -22,6 +22,14 @@ const TaskSchema = new Schema({
   description: { type: String, default: null },
   column: { type: Schema.Types.ObjectId, ref: "Column", required: true },
   order: { type: Number, default: 0 },
+  // Independent of `column` on purpose: a task's completion state and its
+  // position on the board are two separate facts. A task can be completed
+  // while sitting in any column (including one that isn't the project's
+  // designated "done" column, or a project with no done column at all),
+  // and moving a completed task to another column must never change this
+  // flag — see the column-move code in tasks/[id]/route.js, which never
+  // touches `completed`.
+  completed: { type: Boolean, default: false },
   dueDate: { type: Date, default: null },
   color: { type: String, default: null }, // pastel label key, e.g. "rose" — see lib/taskColors.js
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },

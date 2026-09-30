@@ -7,7 +7,11 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 // One header for every page in the dashboard: an optional way back, the
 // title in the serif, one line of context, and the page's own actions on
 // the right (they wrap under the title on narrow screens).
-export default function PageHeader({ title, description, back, actions, sx }) {
+// `accent`, when passed, draws a small identity-color dot before the
+// title — the same treatment ProjectCard/TeamCard use, so a project or
+// team's detail page still reads as "the same one" you clicked from the
+// grid. Omitted everywhere else; it's optional and defaults to nothing.
+export default function PageHeader({ title, description, back, actions, accent, sx }) {
   return (
     <Box sx={{ mb: { xs: 3, md: 4 }, ...sx }}>
       {back && (
@@ -34,7 +38,13 @@ export default function PageHeader({ title, description, back, actions, sx }) {
       )}
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 2 }}>
         <Box sx={{ minWidth: 0, flex: "1 1 320px" }}>
-          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere" }}>
+          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 1.25 }}>
+            {accent && (
+              <Box
+                aria-hidden
+                sx={{ width: 11, height: 11, borderRadius: "50%", flexShrink: 0, bgcolor: accent, boxShadow: "inset 0 0 0 1px rgba(30,27,22,0.18)" }}
+              />
+            )}
             {title}
           </Typography>
           {description && (

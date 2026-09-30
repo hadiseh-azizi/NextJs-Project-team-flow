@@ -1,15 +1,15 @@
 "use client";
 
 import { Box } from "@mui/material";
-import Wordmark from "@/components/Wordmark";
+import TeamFlowBrand from "@/components/TeamFlowBrand";
 
-// Sign-in, sign-up and verification share one frame: the wordmark top-left
+// Sign-in, sign-up and verification share one frame: the brand top-left
 // and a single narrow column of content on the page itself — no card.
 export default function AuthShell({ children, width = 360 }) {
   return (
     <Box sx={{ minHeight: "100vh", display: "flex", flexDirection: "column", bgcolor: "background.default" }}>
       <Box component="header" sx={{ px: { xs: 2, sm: 3 }, py: 2.5 }}>
-        <Wordmark />
+        <TeamFlowBrand size="lg" />
       </Box>
       <Box
         component="main"

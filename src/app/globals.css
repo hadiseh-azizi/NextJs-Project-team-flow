@@ -49,10 +49,35 @@ html[data-theme-mode="dark"] body {
   color: #F2EFE8 !important;
 }
 
-/* Applied to <html> for ~300ms right when the dark/light toggle is
-   clicked, so surface colors crossfade instead of flipping instantly.
-   This is the one non-interaction animation in the app: it responds
-   directly to a user click and touches color only, no transform/blur. */
+/* Same before-hydration purpose as the pair above, for every appearance
+   other than the default (which the rules above already cover). Values
+   must match each theme's `canvas` in lib/appearanceThemes.js — ink/text
+   color doesn't change between appearances, only the canvas tint does. */
+html[data-theme-mode="light"][data-appearance-theme="slate"],
+html[data-theme-mode="light"][data-appearance-theme="slate"] body { background-color: #F7F8F9 !important; }
+html[data-theme-mode="dark"][data-appearance-theme="slate"],
+html[data-theme-mode="dark"][data-appearance-theme="slate"] body { background-color: #181B1E !important; }
+
+html[data-theme-mode="light"][data-appearance-theme="sage"],
+html[data-theme-mode="light"][data-appearance-theme="sage"] body { background-color: #F7F9F4 !important; }
+html[data-theme-mode="dark"][data-appearance-theme="sage"],
+html[data-theme-mode="dark"][data-appearance-theme="sage"] body { background-color: #181B16 !important; }
+
+html[data-theme-mode="light"][data-appearance-theme="clay"],
+html[data-theme-mode="light"][data-appearance-theme="clay"] body { background-color: #FBF6F2 !important; }
+html[data-theme-mode="dark"][data-appearance-theme="clay"],
+html[data-theme-mode="dark"][data-appearance-theme="clay"] body { background-color: #1C1613 !important; }
+
+html[data-theme-mode="light"][data-appearance-theme="plum"],
+html[data-theme-mode="light"][data-appearance-theme="plum"] body { background-color: #F9F6F8 !important; }
+html[data-theme-mode="dark"][data-appearance-theme="plum"],
+html[data-theme-mode="dark"][data-appearance-theme="plum"] body { background-color: #1A1619 !important; }
+
+/* Applied to <html> for ~300ms right when the dark/light toggle (or the
+   background/accent picker — see AppearanceThemeContext.jsx) is clicked,
+   so surface colors crossfade instead of flipping instantly. Color/
+   border only, no transform, and only runs for that ~300ms window right
+   after the click that triggered it. */
 .theme-transitioning,
 .theme-transitioning * {
   transition:
@@ -63,7 +88,10 @@ html[data-theme-mode="dark"] body {
 
 /* Respect the OS-level "reduce motion" setting: the theme crossfade and
    any hover/press micro-transitions are nice-to-have, never load-bearing,
-   so people who've asked for less motion get an effectively instant UI. */
+   so people who've asked for less motion get an effectively instant UI.
+   This one rule also covers every keyframe animation below (page/entrance
+   fades, the completion check-pop, the error shake) — no per-animation
+   reduced-motion override is needed elsewhere in the app. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -73,6 +101,97 @@ html[data-theme-mode="dark"] body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------------------------------------------------------------------
+   Small, shared motion vocabulary. Every animation in the app is one of
+   these three keyframes, applied once on mount (a card, a page, a list
+   row appearing) or on a specific, momentary state change (a task just
+   completed, a save just failed) — never a looping or decorative effect.
+   Durations stay in the "fast" (~150ms) to "normal" (~250ms) range used
+   throughout theme.js; nothing here runs longer than ~350ms.
+   --------------------------------------------------------------------- */
+
+@keyframes tf-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes tf-check-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+@keyframes tf-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+/* One-time entrance for a freshly-mounted element — a new task/project
+   card, an empty state, a dashboard section. Plays exactly once: React
+   only mounts the node when it's genuinely new (a stable `key` means an
+   existing item is never remounted just because a list re-rendered), so
+   this never replays on ordinary data refreshes. */
+.tf-fade-up {
+  animation: tf-fade-up 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Plain crossfade — used where a short slide would fight with the
+   element's own layout (page content, a switched filter panel). */
+.tf-fade-in {
+  animation: tf-fade-in 160ms ease-out both;
+}
+
+/* A capped stagger for short grids (project cards, team cards). Only the
+   first 8 items step in one after another; anything past that shares the
+   last item's delay so a long list doesn't take longer to finish
+   appearing than a short one. */
+.tf-grid-enter > * { animation: tf-fade-up 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.tf-grid-enter > *:nth-child(1) { animation-delay: 0ms; }
+.tf-grid-enter > *:nth-child(2) { animation-delay: 25ms; }
+.tf-grid-enter > *:nth-child(3) { animation-delay: 50ms; }
+.tf-grid-enter > *:nth-child(4) { animation-delay: 75ms; }
+.tf-grid-enter > *:nth-child(5) { animation-delay: 100ms; }
+.tf-grid-enter > *:nth-child(6) { animation-delay: 125ms; }
+.tf-grid-enter > *:nth-child(7) { animation-delay: 150ms; }
+.tf-grid-enter > *:nth-child(n+8) { animation-delay: 175ms; }
+
+/* Entrance for the Teams/Projects cards: a short rise with a slight
+   scale-in. Each card sets its own (capped) animation-delay, so the tab
+   on a project card arrives together with the card it belongs to. */
+@keyframes tf-settle-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.tf-settle-in {
+  animation: tf-settle-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Whole-page content transition on navigation between dashboard routes
+   (see components/PageTransition.jsx). Short and purely opacity/transform
+   so it never reads as a loading delay. */
+.tf-page-enter {
+  animation: tf-fade-up 200ms ease-out both;
+}
+
+/* The check icon on a task, right after it's confirmed completed. */
+.tf-check-pop {
+  animation: tf-check-pop 260ms ease-out;
+}
+
+/* A field or drop that was rejected — small and quick, not a cartoon
+   wobble. Reserved for real validation/failure feedback only. */
+.tf-shake {
+  animation: tf-shake 220ms ease-in-out;
+}
+
 
 html[data-theme-mode="light"] body {
   color: #1e1b16;

@@ -11,9 +11,12 @@ import { projectAccessFor } from "@/lib/authz";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { withOptionalTransaction } from "@/lib/mongoTransaction";
 import { parseJsonBody } from "@/lib/parseJsonBody";
-import { validateRequiredString } from "@/lib/validation";
+import { validateRequiredString, validateEnumValue } from "@/lib/validation";
+import { EDITING_MODES } from "@/lib/authz";
 
 const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
+const MEMBERS_POPULATE = { path: "members", select: "name email" };
+const EDITORS_POPULATE = { path: "editors", select: "name email" };
 
 const MAX_PROJECT_NAME_LENGTH = 150;
 
@@ -31,6 +34,8 @@ export async function GET(req, { params }) {
   const project = await Project.findById(id)
     .populate("manager", "name email")
     .populate(TEAM_POPULATE)
+    .populate(MEMBERS_POPULATE)
+    .populate(EDITORS_POPULATE)
     .lean();
   if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
   if (!projectAccessFor(project, userId).allowed) return NextResponse.json({ error: "Access denied" }, { status: 403 });
@@ -55,9 +60,10 @@ export async function GET(req, { params }) {
   return NextResponse.json(toProjectDTO(project, columns, tasks));
 }
 
-// Only the project manager (its creator) can rename it — same bar as
-// deleting it: this changes what the project is called for everyone who
-// has access, not just a personal label.
+// Only the project manager (its creator) can rename it or change its
+// editing-permission mode — same bar for both: each changes something
+// about the project for everyone who has access, not just a personal
+// setting.
 export async function PATCH(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -78,15 +84,33 @@ export async function PATCH(req, { params }) {
   const body = await parseJsonBody(req);
   if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
 
-  const nameResult = validateRequiredString(body.name, { field: "Project name", maxLength: MAX_PROJECT_NAME_LENGTH });
-  if (nameResult.error) return NextResponse.json({ error: nameResult.error }, { status: 400 });
+  // Two independent, optional fields: a rename (`name`) and/or an
+  // editing-mode change (`editingMode`) — either can be sent alone,
+  // matching the same "undefined means unchanged" convention used
+  // everywhere else in this route set (see lib/validation.js).
+  const updateFields = {};
+  if (body.name !== undefined) {
+    const nameResult = validateRequiredString(body.name, { field: "Project name", maxLength: MAX_PROJECT_NAME_LENGTH });
+    if (nameResult.error) return NextResponse.json({ error: nameResult.error }, { status: 400 });
+    updateFields.name = nameResult.value;
+  }
+  if (body.editingMode !== undefined) {
+    const modeResult = validateEnumValue(body.editingMode, { field: "Editing mode", allowed: EDITING_MODES });
+    if (modeResult.error) return NextResponse.json({ error: modeResult.error }, { status: 400 });
+    updateFields.editingMode = modeResult.value;
+  }
+  if (Object.keys(updateFields).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
 
   return withMongoErrorHandling(async () => {
-    await Project.updateOne({ _id: id }, { $set: { name: nameResult.value } });
+    await Project.updateOne({ _id: id }, { $set: updateFields });
 
     const updated = await Project.findById(id)
       .populate("manager", "name email")
       .populate(TEAM_POPULATE)
+      .populate(MEMBERS_POPULATE)
+      .populate(EDITORS_POPULATE)
       .lean();
     const [columns, tasks] = await Promise.all([
       Column.find({ project: id }).sort({ order: 1, createdAt: 1, _id: 1 }).lean(),

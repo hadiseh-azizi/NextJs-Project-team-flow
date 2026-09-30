@@ -11,7 +11,8 @@ import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
-import Wordmark from "@/components/Wordmark";
+import AppearancePickerButton from "@/components/AppearancePickerButton";
+import TeamFlowBrand from "@/components/TeamFlowBrand";
 import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
 
@@ -49,10 +50,10 @@ export default function Navbar({ userName }) {
         sx={{ maxWidth: 1200, mx: "auto", width: "100%", px: { xs: 2, sm: 3 }, minHeight: { xs: 52, sm: 56 }, gap: { xs: 0.5, sm: 3 } }}
       >
         <Box sx={{ display: { xs: "none", sm: "block" } }}>
-          <Wordmark href="/dashboard" />
+          <TeamFlowBrand href="/dashboard" />
         </Box>
         <Box sx={{ display: { xs: "block", sm: "none" }, mr: 0.5 }}>
-          <Wordmark href="/dashboard" compact />
+          <TeamFlowBrand href="/dashboard" variant="icon" />
         </Box>
 
         <Box sx={{ display: "flex", alignSelf: "stretch", flexGrow: 1, gap: { xs: 0, sm: 0.5 } }}>
@@ -99,6 +100,7 @@ export default function Navbar({ userName }) {
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
+          <AppearancePickerButton />
           <ThemeToggleButton />
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, pl: { xs: 0.5, sm: 1 } }}>
             <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode) }}>
