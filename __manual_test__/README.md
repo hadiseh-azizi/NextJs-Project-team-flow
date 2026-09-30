@@ -38,7 +38,7 @@ node __manual_test__/23-flexible-board-and-completion.test.cjs
 node __manual_test__/25-group-tasks-by-project.test.cjs
 node __manual_test__/26-project-membership.test.cjs
 node __manual_test__/27-project-editing-permission.test.cjs
-node __manual_test__/28-entity-colors-and-appearance.test.cjs
+node __manual_test__/28-entity-colors.test.cjs
 node __manual_test__/29-motion-stagger-delay.test.cjs
 node __manual_test__/30-auto-signin-after-verification.test.cjs
 node __manual_test__/31-share-project-board.test.cjs
@@ -47,6 +47,8 @@ node __manual_test__/33-page-titles.test.cjs
 node __manual_test__/34-code-file-attachments.test.cjs
 node __manual_test__/35-column-reorder.test.cjs
 node __manual_test__/36-collapsible-columns.test.cjs
+node __manual_test__/37-brand-integration.test.cjs
+node __manual_test__/38-brand-color-system.test.cjs
 ```
 
 (`24-task-creation-attachments.test.cjs` exists in the suite but was

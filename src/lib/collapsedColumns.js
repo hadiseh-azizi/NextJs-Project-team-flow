@@ -3,7 +3,7 @@
 // Collapsing is a per-browser viewing preference, not project data, so it
 // lives in localStorage (one small JSON array of column ids per project)
 // rather than in the database or an API — same approach as the theme mode
-// and appearance choices. Everything here is pure or defensive so that
+// choice. Everything here is pure or defensive so that
 // disabled storage (private browsing), corrupt values, and columns that
 // have since been deleted can never break the board: the worst outcome is
 // that a column shows expanded.

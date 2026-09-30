@@ -1,5 +1,6 @@
 import AuthProvider from "@/components/AuthProvider";
 import ThemeRegistry from "@/components/ThemeRegistry";
+import { brandCssVariables } from "@/lib/brand";
 import "./globals.css";
 
 export const metadata = {
@@ -34,12 +35,8 @@ const THEME_INIT_SCRIPT = `
   } catch (e) {
     document.documentElement.setAttribute("data-theme-mode", "light");
   }
-  try {
-    var storedAppearance = localStorage.getItem("teamflow-appearance-theme");
-    document.documentElement.setAttribute("data-appearance-theme", storedAppearance || "default");
-  } catch (e) {
-    document.documentElement.setAttribute("data-appearance-theme", "default");
-  }
+  // The background/accent picker was removed; drop the value it left behind.
+  try { localStorage.removeItem("teamflow-appearance-theme"); } catch (e) {}
 })();
 `;
 
@@ -47,6 +44,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
+        <style id="brand-tokens" dangerouslySetInnerHTML={{ __html: brandCssVariables() }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>

@@ -1,17 +1,21 @@
 // Deterministically maps any string (a user id, a team id, a name) to one
-// of a fixed set of pastel colors — the same input always gets the same
+// of a fixed set of soft tints — the same input always gets the same
 // color, so a person's avatar color stays consistent across the app
-// without anyone having to pick it. Light mode gets soft pastels; dark
-// mode gets the same hues shifted deep and muted instead of glowing.
+// without anyone having to pick it.
+//
+// The tints are the Team Flow brand hues (blue, violet, teal, mint — see
+// lib/brand.js) at low strength: light mode gets pale tints, dark mode gets
+// the same hues deep and muted. Avatar initials sit on them in the normal
+// text color, so contrast holds in both modes.
 const PALETTE = [
-  { light: "#F6D8DA", dark: "#5A2E35" }, // rose
-  { light: "#F8E0CA", dark: "#583B25" }, // peach
-  { light: "#F4EBC3", dark: "#524A22" }, // lemon
-  { light: "#D6EBDB", dark: "#264636" }, // mint
-  { light: "#D7E6F0", dark: "#243B50" }, // sky
-  { light: "#E5DEEE", dark: "#3F3453" }, // lavender
-  { light: "#EDE4D3", dark: "#4A3C28" }, // sand
-  { light: "#F7DAD2", dark: "#552D28" }, // coral
+  { light: "#D9E5FB", dark: "#1F3559" }, // blue
+  { light: "#E3DFFA", dark: "#312C61" }, // violet
+  { light: "#D1EDEF", dark: "#18424A" }, // teal
+  { light: "#D3EFE3", dark: "#194337" }, // mint
+  { light: "#D6EAF8", dark: "#1B3C54" }, // sky
+  { light: "#DBDEF6", dark: "#2A3262" }, // indigo
+  { light: "#DEE5F0", dark: "#2B3A54" }, // slate
+  { light: "#ECE8FB", dark: "#3A3568" }, // lavender
 ];
 
 function hashString(str) {

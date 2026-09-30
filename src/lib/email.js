@@ -1,4 +1,14 @@
 import nodemailer from "nodemailer";
+import { BRAND } from "@/lib/brand";
+
+// Email clients ignore CSS variables, so the templates inline the light-mode
+// brand tokens from lib/brand.js instead of carrying colors of their own.
+const MAIL = {
+  text: BRAND.light.text,
+  muted: BRAND.light.textSecondary,
+  primary: BRAND.light.primary,
+  onPrimary: BRAND.light.onPrimary,
+};
 
 // NEXTAUTH_URL is meant to be an absolute origin (e.g. "https://app.example.com").
 // Validate it rather than trusting it blindly into a link we email out —
@@ -97,15 +107,15 @@ export async function sendTeamInviteEmail({ to, teamName, inviterName }) {
   const subject = `${safeSubjectInviterName} invited you to join "${safeSubjectTeamName}" on TeamFlow`;
   const text = `${inviterName} invited you to join the team "${teamName}" on TeamFlow.\n\nCreate an account to join automatically:\n${signupUrl}\n\nIf you weren't expecting this, you can ignore this email.`;
   const html = `
-    <div style="font-family: sans-serif; color: #221F2E; max-width: 480px; margin: 0 auto;">
-      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:#A8752E;">.</span></p>
+    <div style="font-family: sans-serif; color: ${MAIL.text}; max-width: 480px; margin: 0 auto;">
+      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:${MAIL.primary};">.</span></p>
       <p><strong>${safeHtmlInviterName}</strong> invited you to join the team <strong>${safeHtmlTeamName}</strong> on TeamFlow.</p>
       <p>
-        <a href="${signupUrl}" style="display:inline-block; background:#A8752E; color:#fff; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
+        <a href="${signupUrl}" style="display:inline-block; background:${MAIL.primary}; color:${MAIL.onPrimary}; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
           Create your account
         </a>
       </p>
-      <p style="color:#786F94; font-size: 13px;">You'll be added to "${safeHtmlTeamName}" automatically as soon as you sign up with this email address.</p>
+      <p style="color:${MAIL.muted}; font-size: 13px;">You'll be added to "${safeHtmlTeamName}" automatically as soon as you sign up with this email address.</p>
     </div>
   `;
 
@@ -120,16 +130,16 @@ export async function sendPasswordResetEmail({ to, name, token }) {
   const subject = "Reset Your Password";
   const text = `Hi ${name},\n\nWe received a request to reset the password for your TeamFlow account. Use the link below to choose a new password:\n${resetUrl}\n\nThis link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email — your password won't be changed.`;
   const html = `
-    <div style="font-family: sans-serif; color: #221F2E; max-width: 480px; margin: 0 auto;">
-      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:#A8752E;">.</span></p>
+    <div style="font-family: sans-serif; color: ${MAIL.text}; max-width: 480px; margin: 0 auto;">
+      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:${MAIL.primary};">.</span></p>
       <p>Hi ${safeName},</p>
       <p>We received a request to reset the password for your account. Click below to choose a new one.</p>
       <p>
-        <a href="${resetUrl}" style="display:inline-block; background:#A8752E; color:#fff; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
+        <a href="${resetUrl}" style="display:inline-block; background:${MAIL.primary}; color:${MAIL.onPrimary}; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
           Reset my password
         </a>
       </p>
-      <p style="color:#786F94; font-size: 13px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't be changed.</p>
+      <p style="color:${MAIL.muted}; font-size: 13px;">This link expires in 1 hour. If you didn't request this, you can safely ignore this email — your password won't be changed.</p>
     </div>
   `;
 
@@ -144,16 +154,16 @@ export async function sendVerificationEmail({ to, name, token }) {
   const subject = "Confirm your email for TeamFlow";
   const text = `Hi ${name},\n\nConfirm your email address to activate your TeamFlow account:\n${verifyUrl}\n\nThis link expires in 24 hours. If you didn't create this account, you can ignore this email.`;
   const html = `
-    <div style="font-family: sans-serif; color: #221F2E; max-width: 480px; margin: 0 auto;">
-      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:#A8752E;">.</span></p>
+    <div style="font-family: sans-serif; color: ${MAIL.text}; max-width: 480px; margin: 0 auto;">
+      <p style="font-size: 18px; font-weight: 700;">TeamFlow<span style="color:${MAIL.primary};">.</span></p>
       <p>Hi ${safeName},</p>
       <p>Confirm your email address to activate your account and sign in.</p>
       <p>
-        <a href="${verifyUrl}" style="display:inline-block; background:#A8752E; color:#fff; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
+        <a href="${verifyUrl}" style="display:inline-block; background:${MAIL.primary}; color:${MAIL.onPrimary}; padding:10px 18px; border-radius:6px; text-decoration:none; font-weight:600;">
           Verify my email
         </a>
       </p>
-      <p style="color:#786F94; font-size: 13px;">This link expires in 24 hours. If you didn't create this account, you can ignore this email.</p>
+      <p style="color:${MAIL.muted}; font-size: 13px;">This link expires in 24 hours. If you didn't create this account, you can ignore this email.</p>
     </div>
   `;
 

@@ -1,35 +1,57 @@
-// Deterministic "identity" colors for Projects and Teams — the same
-// mechanism as pastelColor.js (hash the id, index into a fixed palette)
-// but two separate, more saturated palettes so a project's color is never
-// confused with a team's, a person's avatar (pastelColor.js), or a task's
-// own chosen color (taskColors.js). Same id always maps to the same
-// color; nothing here is random or re-rolled on render.
+import { BRAND, mixHex } from "@/lib/brand";
+
+// Deterministic "identity" colors for Projects and Teams — hash the id,
+// index into a fixed palette. Same id always maps to the same color;
+// nothing here is random or re-rolled on render.
 //
-// Each entry carries a "strong" tone (open tasks, card accents, the
-// currently-relevant state) and a "muted" tone (closed/done tasks —
-// quieter, but still recognizably the same hue) for both color schemes.
+// Both palettes are built from the Team Flow brand family (blue, violet,
+// teal/mint from the mark — see lib/brand.js), never from unrelated hues.
+// Variety comes from stepping each hue lighter, darker or toward its
+// neighbor, so eight projects side by side still read as one product.
+//
+// PROJECT_PALETTE is the clearer, more saturated set. TEAM_PALETTE is the
+// same family pulled deeper and calmer, so a team's color (a card's top
+// edge, a tab) is never mistaken for a project's color, and no value is
+// shared between the two palettes.
+//
+// Each project entry carries a "strong" tone (open tasks, card accents, the
+// currently-relevant state) and a "muted" tone (closed/done tasks — the same
+// hue, quieter), for both color schemes. The muted tone is computed from the
+// strong one by blending toward the surface, so it can never drift into a
+// different hue.
 
-const PROJECT_PALETTE = [
-  { strong: { light: "#3B6FA0", dark: "#8FB4DA" }, muted: { light: "#A9C2D9", dark: "#4A617A" } }, // cobalt
-  { strong: { light: "#8A5FB0", dark: "#C4A3E0" }, muted: { light: "#C7B5D9", dark: "#5D4E70" } }, // violet
-  { strong: { light: "#3F8F6D", dark: "#8FD1B2" }, muted: { light: "#A6CBB9", dark: "#4A6B5A" } }, // jade
-  { strong: { light: "#B4791F", dark: "#E0B36A" }, muted: { light: "#D7BE94", dark: "#6B5730" } }, // amber
-  { strong: { light: "#B25444", dark: "#E29B8C" }, muted: { light: "#D6AFA4", dark: "#6B443A" } }, // terracotta
-  { strong: { light: "#2E8B95", dark: "#84CBD3" }, muted: { light: "#9EC4C8", dark: "#3F6266" } }, // teal
-  { strong: { light: "#A24D80", dark: "#DA9EBF" }, muted: { light: "#CDAABE", dark: "#664156" } }, // plum
-  { strong: { light: "#6B7A2E", dark: "#B7C879" }, muted: { light: "#B9C093", dark: "#565F35" } }, // olive
+// [name, light strong, dark strong]
+const PROJECT_HUES = [
+  ["blue", "#1D5FD8", "#6AA5FF"], // brand blue
+  ["violet", "#5B4FD6", "#A79EFF"], // brand violet
+  ["teal", "#0E8A8F", "#4CCFD3"], // brand teal
+  ["sky", "#1479BF", "#6CC0F5"], // lighter blue
+  ["indigo", "#3E45BC", "#8E96F0"], // blue leaning violet
+  ["mint", "#12946F", "#52D8AE"], // brand mint
+  ["navy", "#2A4A8C", "#7F9DDD"], // darker blue
+  ["lavender", "#7A6BE0", "#C1B8FF"], // lighter violet
 ];
 
-const TEAM_PALETTE = [
-  { strong: { light: "#45647E", dark: "#9AB6C8" } }, // steel
-  { strong: { light: "#5C7A4A", dark: "#A6C48F" } }, // moss
-  { strong: { light: "#9C5B3C", dark: "#D6A47F" } }, // rust
-  { strong: { light: "#5A5EA8", dark: "#ADB0E0" } }, // indigo
-  { strong: { light: "#8C6A22", dark: "#D3B36C" } }, // bronze
-  { strong: { light: "#3E7C82", dark: "#8FC6CC" } }, // slate teal
-  { strong: { light: "#8F4A54", dark: "#D19AA1" } }, // wine
-  { strong: { light: "#6E5A8C", dark: "#B9A6D4" } }, // heather
+const TEAM_HUES = [
+  ["steel", "#2F5F9E", "#8DB0E6"],
+  ["heather", "#5A52A8", "#B0A9EC"],
+  ["deep teal", "#1C7C80", "#7CCBCE"],
+  ["slate blue", "#2E6E8E", "#84C0DE"],
+  ["dusk", "#4B5BA6", "#9EAAE6"],
+  ["sea green", "#2F7D63", "#83CDB1"],
+  ["ink blue", "#3B4F7A", "#96A9D4"],
+  ["wisteria", "#7468B8", "#BDB5EA"],
 ];
+
+const PROJECT_PALETTE = PROJECT_HUES.map(([, light, dark]) => ({
+  strong: { light, dark },
+  muted: {
+    light: mixHex(light, BRAND.light.surface, 0.6),
+    dark: mixHex(dark, BRAND.dark.surface, 0.62),
+  },
+}));
+
+const TEAM_PALETTE = TEAM_HUES.map(([, light, dark]) => ({ strong: { light, dark } }));
 
 function hashString(str) {
   let hash = 0;

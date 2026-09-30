@@ -84,7 +84,7 @@ export default function ProjectCard({ project, index = 0 }) {
               borderColor: edge,
               borderBottom: "none",
               borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0`,
-              boxShadow: `inset 0 2px 0 ${teamAccent}, 0 -1px 2px ${dark ? "rgba(0,0,0,0.3)" : "rgba(30,27,22,0.06)"}`,
+              boxShadow: `inset 0 2px 0 ${teamAccent}, 0 -1px 2px ${alpha(dark ? theme.palette.surface.sunken : theme.palette.text.primary, dark ? 0.6 : 0.06)}`,
               transition: "border-color .15s ease",
             },
             "& .tf-project-body": {

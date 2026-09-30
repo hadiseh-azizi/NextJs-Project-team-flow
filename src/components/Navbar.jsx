@@ -11,7 +11,6 @@ import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
-import AppearancePickerButton from "@/components/AppearancePickerButton";
 import TeamFlowBrand from "@/components/TeamFlowBrand";
 import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
@@ -100,7 +99,6 @@ export default function Navbar({ userName }) {
         </Box>
 
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
-          <AppearancePickerButton />
           <ThemeToggleButton />
           <Box sx={{ display: "flex", alignItems: "center", gap: 1, pl: { xs: 0.5, sm: 1 } }}>
             <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode) }}>

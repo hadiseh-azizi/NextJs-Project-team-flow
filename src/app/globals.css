@@ -14,67 +14,37 @@ html {
   box-sizing: border-box;
 }
 
-/* Matches the theme.js palette's canvas colors. `data-theme-mode` is set
-   synchronously before hydration (see the inline script in layout.jsx),
+/* Page background and text color come from the --brand-* tokens (declared
+   once from lib/brand.js in a <style> in layout.jsx). `data-theme-mode` is
+   set synchronously before hydration (see the inline script in layout.jsx),
    so the background is already correct on first paint — CssBaseline then
    takes over once MUI mounts, with no visible handoff. Also tells native
    form controls, scrollbars, etc. which color scheme to render in. */
-/* Background AND text color are pinned here, keyed off the attribute the
-   blocking script sets before paint — not left to whichever of MUI's two
-   (light-theme SSR, dark-theme client) global stylesheets happens to be
-   inserted last. That insertion order isn't guaranteed, so anything that
-   relies on inheriting color from <body> (most text in the app) needs a
-   rule with real specificity to pin it, exactly like background-color
-   already had to be pinned below. */
 html[data-theme-mode="light"] {
   color-scheme: light;
-  background-color: #FAFAF6;
 }
 html[data-theme-mode="dark"] {
   color-scheme: dark;
-  background-color: #1A1814;
 }
-/* !important is deliberate and narrow: MUI's CssBaseline inserts a stale
+html {
+  background-color: var(--brand-background);
+}
+/* Background AND text color are pinned here, keyed off the tokens above —
+   not left to whichever of MUI's two (light-theme SSR, dark-theme client)
+   global stylesheets happens to be inserted last. That insertion order
+   isn't guaranteed, so anything that relies on inheriting color from <body>
+   (most text in the app) needs a rule with real specificity to pin it.
+   !important is deliberate and narrow: MUI's CssBaseline inserts a stale
    server-rendered `body{...}` rule (baked from the request's initial
-   "light" render) that a corrected client-side global-style insertion
-   does not reliably land after in the cascade, so equal-specificity,
-   later-wins rules can end up picking the wrong one. These two
-   declarations are the only ones in the app that override that. */
-html[data-theme-mode="light"] body {
-  background-color: #FAFAF6 !important;
-  color: #1E1B16 !important;
-}
-html[data-theme-mode="dark"] body {
-  background-color: #1A1814 !important;
-  color: #F2EFE8 !important;
+   "light" render) that a corrected client-side insertion does not reliably
+   land after in the cascade. These two declarations are the only ones in
+   the app that override that. */
+html[data-theme-mode] body {
+  background-color: var(--brand-background) !important;
+  color: var(--brand-text) !important;
 }
 
-/* Same before-hydration purpose as the pair above, for every appearance
-   other than the default (which the rules above already cover). Values
-   must match each theme's `canvas` in lib/appearanceThemes.js — ink/text
-   color doesn't change between appearances, only the canvas tint does. */
-html[data-theme-mode="light"][data-appearance-theme="slate"],
-html[data-theme-mode="light"][data-appearance-theme="slate"] body { background-color: #F7F8F9 !important; }
-html[data-theme-mode="dark"][data-appearance-theme="slate"],
-html[data-theme-mode="dark"][data-appearance-theme="slate"] body { background-color: #181B1E !important; }
-
-html[data-theme-mode="light"][data-appearance-theme="sage"],
-html[data-theme-mode="light"][data-appearance-theme="sage"] body { background-color: #F7F9F4 !important; }
-html[data-theme-mode="dark"][data-appearance-theme="sage"],
-html[data-theme-mode="dark"][data-appearance-theme="sage"] body { background-color: #181B16 !important; }
-
-html[data-theme-mode="light"][data-appearance-theme="clay"],
-html[data-theme-mode="light"][data-appearance-theme="clay"] body { background-color: #FBF6F2 !important; }
-html[data-theme-mode="dark"][data-appearance-theme="clay"],
-html[data-theme-mode="dark"][data-appearance-theme="clay"] body { background-color: #1C1613 !important; }
-
-html[data-theme-mode="light"][data-appearance-theme="plum"],
-html[data-theme-mode="light"][data-appearance-theme="plum"] body { background-color: #F9F6F8 !important; }
-html[data-theme-mode="dark"][data-appearance-theme="plum"],
-html[data-theme-mode="dark"][data-appearance-theme="plum"] body { background-color: #1A1619 !important; }
-
-/* Applied to <html> for ~300ms right when the dark/light toggle (or the
-   background/accent picker — see AppearanceThemeContext.jsx) is clicked,
+/* Applied to <html> for ~300ms right when the dark/light toggle is clicked,
    so surface colors crossfade instead of flipping instantly. Color/
    border only, no transform, and only runs for that ~300ms window right
    after the click that triggered it. */
@@ -190,12 +160,4 @@ html[data-theme-mode="dark"][data-appearance-theme="plum"] body { background-col
    wobble. Reserved for real validation/failure feedback only. */
 .tf-shake {
   animation: tf-shake 220ms ease-in-out;
-}
-
-
-html[data-theme-mode="light"] body {
-  color: #1e1b16;
-}
-html[data-theme-mode="dark"] body {
-  color: #f2efe8;
 }

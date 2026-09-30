@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Box, Typography } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import { formatDateOnly } from "@/lib/dateOnly";
 import { isOverdue, localTodayYmd } from "@/lib/dueStatus";
 import { isTaskCompleted } from "@/lib/taskCompletion";
@@ -158,7 +159,7 @@ export default function OverviewStats({ projects, userId }) {
                         // completed list uses the quieter variant so it
                         // reads as "done", not "active".
                         bgcolor: projectColorForId(group.projectId, mode)[activeStat === "done" ? "muted" : "strong"],
-                        boxShadow: "inset 0 0 0 1px rgba(30,27,22,0.18)",
+                        boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.18)}`,
                       }}
                     />
                     <Typography variant="caption" sx={{ fontWeight: 600, color: "text.secondary", overflowWrap: "anywhere" }}>

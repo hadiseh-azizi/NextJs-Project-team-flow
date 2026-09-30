@@ -1,6 +1,7 @@
 "use client";
 
 import { Box, Tooltip } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import { TASK_COLORS } from "@/lib/taskColors";
 import { useThemeMode } from "@/components/ThemeModeContext";
@@ -62,7 +63,7 @@ export default function ColorSwatchPicker({ value, onChange, disabled = false })
               bgcolor: mode === "dark" ? c.dark : c.light,
               border: "2px solid",
               borderColor: value === c.key ? "primary.main" : "transparent",
-              boxShadow: "inset 0 0 0 1px rgba(30,27,22,0.14)",
+              boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.14)}`,
               "&:hover": disabled ? undefined : { borderColor: value === c.key ? "primary.main" : "line.strong" },
             }}
           />

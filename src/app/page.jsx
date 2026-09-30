@@ -3,6 +3,8 @@ import { Box, Container, Typography, Button, Grid, Avatar } from "@mui/material"
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import TeamFlowBrand from "@/components/TeamFlowBrand";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
+import { BRAND } from "@/lib/brand";
+import { pastelForString } from "@/lib/pastelColor";
 
 const FEATURES = [
   {
@@ -32,12 +34,12 @@ function BoardPreview() {
     },
     {
       label: "In Progress",
-      cards: [{ title: "Simulate in MATLAB", who: "M", whoColor: "#F8E0CA" }],
+      cards: [{ title: "Simulate in MATLAB", who: "M" }],
     },
     {
       label: "Done",
       done: true,
-      cards: [{ title: "Mathematical modeling" }, { title: "Controller design", who: "A", whoColor: "#D6EBDB" }],
+      cards: [{ title: "Mathematical modeling" }, { title: "Controller design", who: "A" }],
     },
   ];
   return (
@@ -57,7 +59,7 @@ function BoardPreview() {
             {c.cards.map((card) => (
               <Box
                 key={card.title}
-                sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 1, p: 1, boxShadow: "0 1px 2px rgba(30,27,22,0.07)" }}
+                sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 1, p: 1, boxShadow: "var(--brand-shadow-card)" }}
               >
                 <Typography sx={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.35 }}>{card.title}</Typography>
                 {(card.due || card.who) && (
@@ -66,7 +68,7 @@ function BoardPreview() {
                       {card.due || ""}
                     </Typography>
                     {card.who && (
-                      <Avatar sx={{ width: 18, height: 18, fontSize: 10, bgcolor: card.whoColor, color: "#1E1B16" }}>{card.who}</Avatar>
+                      <Avatar sx={{ width: 18, height: 18, fontSize: 10, bgcolor: pastelForString(card.who, "light"), color: BRAND.light.text }}>{card.who}</Avatar>
                     )}
                   </Box>
                 )}

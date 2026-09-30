@@ -1,6 +1,6 @@
-import { createTheme, responsiveFontSizes, alpha, lighten, darken } from "@mui/material/styles";
+import { createTheme, responsiveFontSizes, alpha } from "@mui/material/styles";
 import Grow from "@mui/material/Grow";
-import { getAppearanceTheme, DEFAULT_APPEARANCE_THEME } from "@/lib/appearanceThemes";
+import { BRAND, GREY, SHADOW } from "@/lib/brand";
 
 // Shared motion tokens — the same fast/normal/slow tiers used ad hoc as
 // ".12s" throughout this file's styleOverrides, named here for the few
@@ -8,11 +8,14 @@ import { getAppearanceTheme, DEFAULT_APPEARANCE_THEME } from "@/lib/appearanceTh
 // duration than the instant hover/press feedback everything else uses.
 const MOTION = { fast: 120, normal: 200, slow: 280 };
 
-// Design direction: a warm paper canvas, hairline borders, and one deep
-// ochre accent that is reserved for the primary action, focus, and the
-// current location in navigation. Fraunces is used only where the product
-// speaks in a headline voice (page titles, dialog titles, the wordmark);
-// everything you read or operate is Plus Jakarta Sans.
+// Design direction: a cool, blue-tinted canvas with hairline borders and one
+// brand blue reserved for the primary action, focus, and the current
+// location in navigation. Violet and teal (the other two hues of the Team
+// Flow mark) are secondary accents only. Every color here comes from
+// lib/brand.js — this file maps those tokens onto MUI, it does not define
+// colors of its own. Fraunces is used only where the product speaks in a
+// headline voice (page titles, dialog titles, the wordmark); everything you
+// read or operate is Plus Jakarta Sans.
 //
 // Token scale (used everywhere instead of ad-hoc values)
 //   radius   4 chips / menu items / tooltips, 6 buttons / inputs / task cards,
@@ -22,116 +25,60 @@ const MOTION = { fast: 120, normal: 200, slow: 280 };
 //   type     12.5 caption, 14 body2 / controls, 15 body1, 16 section heading,
 //            20 dialog title, 24 auth title, 30 page title
 //   depth    three levels only: card (resting), raised (hover / menus),
-//            overlay (dialogs). Surfaces step canvas < sunken < paper.
+//            overlay (dialogs). Surfaces step background < sunken < surface.
 
-export const INK_TOKENS = {
-  light: "#1E1B16",
-  dark: "#F2EFE8",
-};
-
-const LIGHT = {
-  ink: "#1E1B16",
-  subtle: "#6F6A5F",
-  disabled: "#9A9484",
-  line: "#E3DFD3",
-  lineStrong: "#CFC9B9",
-  canvas: "#FAFAF6",
-  paper: "#FFFFFF",
-  overlay: "#FFFFFF",
-  sunken: "#F3F0E8",
-  input: "#FFFFFF",
-  hover: "rgba(30,27,22,0.045)",
-  progressTrack: "#ECE8DD",
-  accent: "#96652A",
-  accentHover: "#7F531E",
-  accentSoft: "#B4834A",
-  onAccent: "#FFFFFF",
-  shadow: {
-    card: "0 1px 2px rgba(30,27,22,0.07)",
-    raised: "0 3px 10px rgba(30,27,22,0.10)",
-    overlay: "0 12px 32px rgba(30,27,22,0.16)",
-  },
-  backdrop: "rgba(30,27,22,0.38)",
-  grey: { 50: "#F7F5EF", 100: "#F1EDE3", 200: "#E3DFD3", 300: "#CFC9B9", 400: "#A19A87", 500: "#6F6A5F" },
-};
-
-const DARK = {
-  ink: "#F2EFE8",
-  subtle: "#B6AF9E",
-  disabled: "#8A8371",
-  line: "#37332B",
-  lineStrong: "#4A4436",
-  canvas: "#1A1814",
-  paper: "#28241E",
-  overlay: "#2E2A23",
-  sunken: "#211E19",
-  input: "#1F1C17",
-  hover: "rgba(242,239,232,0.06)",
-  progressTrack: "#332E22",
-  accent: "#C99A4A",
-  accentHover: "#DCB878",
-  accentSoft: "#A8752E",
-  onAccent: "#1A1814",
-  shadow: {
-    card: "0 1px 2px rgba(0,0,0,0.40)",
-    raised: "0 4px 14px rgba(0,0,0,0.45)",
-    overlay: "0 12px 32px rgba(0,0,0,0.55)",
-  },
-  backdrop: "rgba(8,7,5,0.62)",
-  grey: { 50: "#241F1A", 100: "#2B261F", 200: "#3A362C", 300: "#4A4436", 400: "#8A8371", 500: "#B6AF9E" },
-};
+// Adapts a BRAND color set to the names this file (and the rest of the app)
+// reads. Purely a rename — no color is computed or overridden here.
+function tokensFor(dark) {
+  const b = dark ? BRAND.dark : BRAND.light;
+  return {
+    ...b,
+    ink: b.text,
+    subtle: b.textSecondary,
+    disabled: b.textDisabled,
+    line: b.border,
+    lineStrong: b.borderStrong,
+    canvas: b.background,
+    paper: b.surface,
+    overlay: b.surfaceElevated,
+    sunken: b.surfaceSunken,
+    input: b.surfaceInput,
+    hover: alpha(b.text, dark ? 0.06 : 0.045),
+    progressTrack: b.track,
+    shadow: dark ? SHADOW.dark : SHADOW.light,
+    grey: dark ? GREY.dark : GREY.light,
+  };
+}
 
 const SANS = "'Plus Jakarta Sans', Roboto, Arial, sans-serif";
 const SERIF = "'Fraunces', Georgia, serif";
 
-export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
+export function buildTheme(mode) {
   const dark = mode === "dark";
-  const base = dark ? DARK : LIGHT;
+  const t = tokensFor(dark);
 
-  // The default appearance reproduces the constants above exactly — no
-  // recompute, no risk of drift for anyone who never opens the picker.
-  // Every other appearance overrides just the canvas/paper/accent trio;
-  // the handful of surfaces derived from those (overlay/sunken/input) are
-  // recomputed from them so contrast stays correct, while borders,
-  // status colors, and shadows stay the app's original neutral tones —
-  // those are structural, not brand-color, so they don't shift with the
-  // background.
-  let t = base;
-  if (appearanceThemeId !== DEFAULT_APPEARANCE_THEME) {
-    const swatch = getAppearanceTheme(appearanceThemeId)[dark ? "dark" : "light"];
-    t = {
-      ...base,
-      canvas: swatch.canvas,
-      paper: swatch.paper,
-      accent: swatch.accent,
-      accentHover: swatch.accentHover,
-      accentSoft: swatch.accentSoft,
-      overlay: dark ? lighten(swatch.paper, 0.02) : swatch.paper,
-      sunken: dark ? lighten(swatch.canvas, 0.02) : darken(swatch.canvas, 0.02),
-      input: dark ? lighten(swatch.canvas, 0.015) : swatch.paper,
-    };
-  }
-
-  const focusRing = `2px solid ${t.accent}`;
+  const focusRing = `2px solid ${t.primary}`;
 
   const theme = createTheme({
     direction: "ltr",
     palette: {
       mode,
-      primary: { main: t.accent, dark: t.accentHover, light: t.accentSoft, contrastText: t.onAccent },
-      secondary: { main: dark ? "#8FA98F" : "#4F7A5A" },
-      success: { main: dark ? "#8FC29E" : "#3F7A52" },
-      warning: { main: dark ? "#E0BC7A" : "#8A6100" },
-      error: { main: dark ? "#E29B93" : "#B23B2E" },
-      info: { main: dark ? "#9DB8C7" : "#3F6478" },
+      primary: { main: t.primary, dark: t.primaryHover, contrastText: t.onPrimary },
+      secondary: { main: t.secondary },
+      success: { main: t.success },
+      warning: { main: t.warning },
+      error: { main: t.error },
+      info: { main: t.info },
       text: { primary: t.ink, secondary: t.subtle, disabled: t.disabled },
       divider: t.line,
       background: { default: t.canvas, paper: t.paper },
-      action: { hover: t.hover, selected: alpha(t.accent, dark ? 0.16 : 0.1) },
+      action: { hover: t.hover, selected: alpha(t.primary, dark ? 0.16 : 0.1) },
       grey: t.grey,
       // Custom tokens, read as theme.palette.surface / theme.palette.line
-      surface: { sunken: t.sunken, hover: t.hover, overlay: t.overlay, input: t.input },
+      surface: { sunken: t.sunken, hover: t.hover, overlay: t.overlay, input: t.input, track: t.progressTrack },
       line: { main: t.line, strong: t.lineStrong },
+      // Brand hues that are not MUI roles, read as theme.palette.brand.accent.
+      brand: { accent: t.accent, secondary: t.secondary },
     },
     tf: { shadow: t.shadow },
     typography: {
@@ -154,7 +101,7 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
       MuiCssBaseline: {
         styleOverrides: {
           body: { WebkitFontSmoothing: "antialiased", MozOsxFontSmoothing: "grayscale" },
-          "::selection": { backgroundColor: alpha(t.accent, 0.28) },
+          "::selection": { backgroundColor: alpha(t.primary, 0.28) },
           "*": { scrollbarColor: `${t.lineStrong} transparent` },
         },
       },
@@ -184,12 +131,12 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
           sizeSmall: { height: 30, paddingInline: 10, fontSize: "0.8125rem" },
           sizeLarge: { height: 42, paddingInline: 18, fontSize: "0.9375rem" },
           containedPrimary: {
-            backgroundColor: t.accent,
+            backgroundColor: t.primary,
             color: t.onAccent,
-            "&:hover": { backgroundColor: t.accentHover },
-            "&:active": { backgroundColor: t.accentHover },
+            "&:hover": { backgroundColor: t.primaryHover },
+            "&:active": { backgroundColor: t.primaryActive },
           },
-          containedError: { "&:hover": { backgroundColor: dark ? "#EBB0A9" : "#983127" } },
+          containedError: { "&:hover": { backgroundColor: t.errorHover } },
           outlinedPrimary: {
             color: t.ink,
             borderColor: t.lineStrong,
@@ -201,15 +148,15 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
             "&:hover": { borderColor: t.disabled, backgroundColor: t.hover },
           },
           outlinedError: {
-            borderColor: alpha(dark ? "#E29B93" : "#B23B2E", 0.5),
-            "&:hover": { backgroundColor: alpha(dark ? "#E29B93" : "#B23B2E", 0.08) },
+            borderColor: alpha(t.error, 0.5),
+            "&:hover": { backgroundColor: alpha(t.error, 0.08) },
           },
           textInherit: { "&:hover": { backgroundColor: t.hover } },
           textPrimary: {
-            color: t.accent,
-            "&:hover": { backgroundColor: alpha(t.accent, dark ? 0.14 : 0.08) },
+            color: t.primary,
+            "&:hover": { backgroundColor: alpha(t.primary, dark ? 0.14 : 0.08) },
           },
-          textError: { "&:hover": { backgroundColor: alpha(dark ? "#E29B93" : "#B23B2E", dark ? 0.14 : 0.08) } },
+          textError: { "&:hover": { backgroundColor: alpha(t.error, dark ? 0.14 : 0.08) } },
         },
       },
       MuiIconButton: {
@@ -311,8 +258,8 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
             fontSize: "0.875rem",
             borderRadius: 4,
             "&.Mui-focusVisible": { outline: "none", backgroundColor: t.hover },
-            "&.Mui-selected": { backgroundColor: alpha(t.accent, dark ? 0.16 : 0.1) },
-            "&.Mui-selected:hover": { backgroundColor: alpha(t.accent, dark ? 0.22 : 0.14) },
+            "&.Mui-selected": { backgroundColor: alpha(t.primary, dark ? 0.16 : 0.1) },
+            "&.Mui-selected:hover": { backgroundColor: alpha(t.primary, dark ? 0.22 : 0.14) },
           },
         },
       },
@@ -320,8 +267,8 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
         defaultProps: { arrow: false, enterDelay: 400 },
         styleOverrides: {
           tooltip: {
-            backgroundColor: dark ? "#F2EFE8" : "#2B2721",
-            color: dark ? "#1A1814" : "#FAFAF6",
+            backgroundColor: t.tooltipBackground,
+            color: t.tooltipText,
             fontSize: "0.78rem",
             fontWeight: 500,
             borderRadius: 4,
@@ -341,10 +288,10 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
             transition: "box-shadow .12s ease",
             "& .MuiOutlinedInput-notchedOutline": { borderColor: t.lineStrong, transition: "border-color .12s ease" },
             "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.disabled },
-            "&.Mui-focused": { boxShadow: `0 0 0 3px ${alpha(t.accent, dark ? 0.28 : 0.2)}` },
-            "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderWidth: 1, borderColor: t.accent },
-            "&.Mui-error .MuiOutlinedInput-notchedOutline": { borderColor: dark ? "#E29B93" : "#B23B2E" },
-            "&.Mui-error.Mui-focused": { boxShadow: `0 0 0 3px ${alpha(dark ? "#E29B93" : "#B23B2E", 0.22)}` },
+            "&.Mui-focused": { boxShadow: `0 0 0 3px ${alpha(t.primary, dark ? 0.28 : 0.2)}` },
+            "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderWidth: 1, borderColor: t.primary },
+            "&.Mui-error .MuiOutlinedInput-notchedOutline": { borderColor: t.error },
+            "&.Mui-error.Mui-focused": { boxShadow: `0 0 0 3px ${alpha(t.error, 0.22)}` },
             "&.Mui-disabled": { backgroundColor: t.sunken },
             "&.MuiInputBase-multiline": { padding: 0 },
           },
@@ -371,10 +318,10 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
         styleOverrides: {
           root: { borderRadius: 6, fontSize: "0.875rem", alignItems: "center", color: t.ink },
           message: { padding: "6px 0" },
-          standardError: { backgroundColor: alpha(dark ? "#E29B93" : "#B23B2E", dark ? 0.14 : 0.08), "& .MuiAlert-icon": { color: dark ? "#E29B93" : "#B23B2E" } },
-          standardWarning: { backgroundColor: alpha(dark ? "#E0BC7A" : "#8A6100", dark ? 0.14 : 0.1), "& .MuiAlert-icon": { color: dark ? "#E0BC7A" : "#8A6100" } },
-          standardSuccess: { backgroundColor: alpha(dark ? "#8FC29E" : "#3F7A52", dark ? 0.14 : 0.09), "& .MuiAlert-icon": { color: dark ? "#8FC29E" : "#3F7A52" } },
-          standardInfo: { backgroundColor: alpha(dark ? "#9DB8C7" : "#3F6478", dark ? 0.14 : 0.08), "& .MuiAlert-icon": { color: dark ? "#9DB8C7" : "#3F6478" } },
+          standardError: { backgroundColor: alpha(t.error, dark ? 0.14 : 0.08), "& .MuiAlert-icon": { color: t.error } },
+          standardWarning: { backgroundColor: alpha(t.warning, dark ? 0.14 : 0.1), "& .MuiAlert-icon": { color: t.warning } },
+          standardSuccess: { backgroundColor: alpha(t.success, dark ? 0.14 : 0.09), "& .MuiAlert-icon": { color: t.success } },
+          standardInfo: { backgroundColor: alpha(t.info, dark ? 0.14 : 0.08), "& .MuiAlert-icon": { color: t.info } },
         },
       },
       MuiLinearProgress: {
@@ -405,7 +352,7 @@ export function buildTheme(mode, appearanceThemeId = DEFAULT_APPEARANCE_THEME) {
             textDecorationColor: alpha(t.ink, 0.35),
             textUnderlineOffset: 3,
             transition: "color .12s ease, text-decoration-color .12s ease",
-            "&:hover": { color: t.accent, textDecorationColor: t.accent },
+            "&:hover": { color: t.primary, textDecorationColor: t.primary },
           },
         },
       },

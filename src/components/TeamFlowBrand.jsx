@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Box } from "@mui/material";
+import { WORDMARK } from "@/lib/brand";
 
 // The one place the Team Flow identity is rendered. Every logo in the app
 // comes from here, from the same source image (public/brand/symbol.png).
@@ -23,10 +24,8 @@ const SYMBOL_RATIO = 333 / 276;
 
 // "Flow" runs blue -> violet-blue -> cyan -> mint, sampled from the reference.
 // The light-theme stops are a step deeper so the letters hold against paper.
-const FLOW_GRADIENT = {
-  dark: "linear-gradient(90deg, #6A6FF7 0%, #3E8EFB 38%, #3EB6F5 66%, #35DEB4 100%)",
-  light: "linear-gradient(90deg, #5B5FEE 0%, #2F7DF0 38%, #1FA3DC 66%, #17BE97 100%)",
-};
+// The values are the official wordmark colors and live in lib/brand.js.
+const FLOW_GRADIENT = WORDMARK.gradient;
 
 export default function TeamFlowBrand({ variant = "full", size = "md", href = "/" }) {
   const s = SIZES[size] || SIZES.md;
@@ -65,7 +64,7 @@ export default function TeamFlowBrand({ variant = "full", size = "md", href = "/
               display: "inline-block",
               paddingRight: "0.08em",
               marginRight: "-0.08em",
-              color: theme.palette.mode === "dark" ? "#3EB6F5" : "#1FA3DC", // fallback if clip is unsupported
+              color: WORDMARK.fallback[theme.palette.mode === "dark" ? "dark" : "light"], // fallback if clip is unsupported
               backgroundImage: FLOW_GRADIENT[theme.palette.mode === "dark" ? "dark" : "light"],
               WebkitBackgroundClip: "text",
               backgroundClip: "text",

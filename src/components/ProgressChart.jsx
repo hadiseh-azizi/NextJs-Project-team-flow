@@ -74,7 +74,7 @@ export default function ProgressChart({ projects }) {
             dataKey="progress"
             barSize={10}
             radius={[0, 3, 3, 0]}
-            background={{ fill: theme.palette.mode === "dark" ? "#332E22" : "#ECE8DD", radius: 3 }}
+            background={{ fill: theme.palette.surface.track, radius: 3 }}
             // Animates both on first render and when a value changes (a
             // task getting checked off moves its project's bar), skipped
             // entirely when the person has asked for reduced motion.
