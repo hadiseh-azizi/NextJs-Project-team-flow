@@ -2,227 +2,118 @@ require("./register.cjs");
 const { test, summary, assert } = require("./harness.cjs");
 const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 
-// A small in-memory "database" that mimics just enough MongoDB
-// transaction semantics to prove the route's code is correctly scoped:
-// writes made with a session are buffered and only applied to the
-// committed store if the transaction's callback resolves; if it throws,
-// the buffer is discarded (rollback), exactly like a real replica set
-// aborting the transaction. This is a simulation for unit-testing the
-// *code path*, not a substitute for live replica-set verification (see
-// CHANGELOG.md).
-function makeFakeWorld(initialColumns) {
-  const committed = new Map(initialColumns.map((c) => [c._id, { ...c }]));
+// This file used to cover the transaction that kept exactly one column
+// flagged `isDoneColumn` per project. That concept is gone: every column is
+// equal and completion is the task's own flag. The filename is kept so older
+// docs that cite it stay valid; the checks below now guard the removal —
+// the column PATCH route renames/reorders one column and nothing else, and
+// a client that still sends `isDoneColumn` changes nothing.
 
-  function bufferPatch(session, id, patch) {
-    const existing = session.buffer.get(id) || {};
-    session.buffer.set(id, { ...existing, ...patch });
-  }
-
-  const mongooseMock = {
-    startSession: async () => {
-      const session = { buffer: new Map() };
-      session.withTransaction = async (fn) => {
-        await fn(); // throwing here means NO commit below
-        for (const [id, patch] of session.buffer) {
-          committed.set(id, { ...(committed.get(id) || {}), ...patch });
-        }
-      };
-      session.endSession = async () => {};
-      return session;
-    },
-  };
-
+function makeStore(rows) {
+  const committed = new Map(rows.map((c) => [c._id, { ...c }]));
+  const calls = { findOneAndUpdate: [], updateMany: 0 };
   const ColumnModel = {
     findOne: ({ _id, project }) => ({
       lean: async () => {
-        const doc = [...committed.values()].find((d) => d._id === _id && d.project === project);
-        return doc ? { ...doc } : null;
+        const d = committed.get(_id);
+        return d && d.project === project ? { ...d } : null;
       },
     }),
     findOneAndUpdate: async ({ _id, project }, { $set }, opts = {}) => {
-      const session = opts.session;
-      const base = [...committed.values()].find((d) => d._id === _id && d.project === project);
-      if (!base) return null;
-      if (session) bufferPatch(session, _id, $set);
-      else committed.set(_id, { ...committed.get(_id), ...$set });
-      // findOneAndUpdate({ new: true }) reflects this write immediately
-      // for the caller, even before the transaction commits — read your
-      // own writes within the same session, same as real MongoDB.
-      const effective = session ? { ...base, ...(session.buffer.get(_id) || {}) } : committed.get(_id);
-      return opts.new ? { ...effective } : { ...base };
+      calls.findOneAndUpdate.push({ _id, $set: { ...$set }, session: opts.session });
+      const d = committed.get(_id);
+      if (!d || d.project !== project) return null;
+      committed.set(_id, { ...d, ...$set });
+      return { ...committed.get(_id) };
     },
-    updateMany: async (filter, update, opts = {}) => {
-      const session = opts.session;
-      const matches = [...committed.values()].filter(
-        (d) => d.project === filter.project && d._id !== filter._id.$ne
-      );
-      for (const m of matches) {
-        if (session) bufferPatch(session, m._id, update.$set);
-        else committed.set(m._id, { ...committed.get(m._id), ...update.$set });
-      }
+    updateMany: async () => {
+      calls.updateMany += 1;
     },
   };
-
-  return { mongooseMock, ColumnModel, committed };
+  return { committed, calls, ColumnModel };
 }
 
-function fakeReq(body) {
-  return { json: async () => body };
-}
+const A = "aaaaaaaaaaaaaaaaaaaaaaaa";
+const B = "bbbbbbbbbbbbbbbbbbbbbbbb";
+const req = (body) => ({ json: async () => body });
 
-function setupMocks({ columns, updateManyShouldFail = false }) {
+function setup({ columns, canEdit = true }) {
   resetModuleCache();
-  const world = makeFakeWorld(columns);
-  if (updateManyShouldFail) {
-    world.ColumnModel.updateMany = async () => {
-      // Fails after the save would already have happened in the old,
-      // non-transactional flow — simulates "the second write fails"
-      // from the Issue 1 bug report.
-      throw new Error("simulated network drop mid-transaction");
-    };
-  }
-  const realMongoose = require("mongoose");
-  // Only override startSession — Schema/model/models are still needed
-  // (unmocked) by unrelated models loaded transitively via lib/auth.js
-  // (e.g. models/User.js), so replacing the whole module would break
-  // those instead of just isolating the transaction behavior under test.
-  mockModule("mongoose", { ...realMongoose, startSession: world.mongooseMock.startSession });
+  const store = makeStore(columns);
   mockModule("next-auth", { getServerSession: async () => ({ user: { id: "user1" } }) });
   mockModule("@/lib/mongodb", { connectDB: async () => {} });
-  mockModule("@/lib/authz", { canEditProject: () => true, getAccessibleProject: async () => ({ _id: "p1" }) });
+  mockModule("@/lib/authz", { canEditProject: () => canEdit, getAccessibleProject: async () => ({ _id: "p1" }) });
   mockModule("@/models/Task", { countDocuments: async () => 0 });
-  mockModule("@/models/Column", world.ColumnModel);
-  return world;
+  mockModule("@/models/Column", store.ColumnModel);
+  return store;
 }
+const patch = (body, columnId = A) =>
+  require("../src/app/api/projects/[id]/columns/[columnId]/route.js").PATCH(req(body), { params: { id: "p1", columnId } });
 
 (async () => {
-  console.log("Done-column PATCH transaction (Issue 1)");
+  console.log("Column PATCH — all columns are equal (no done column)");
 
-  await test("marking a column done clears the flag on every other column, atomically", async () => {
-    const world = setupMocks({
-      columns: [
-        { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", project: "p1", name: "To Do", order: 0, isDoneColumn: false },
-        { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", project: "p1", name: "Done", order: 1, isDoneColumn: true },
-      ],
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/columns/[columnId]/route.js");
-    const res = await PATCH(fakeReq({ isDoneColumn: true }), { params: { id: "p1", columnId: "aaaaaaaaaaaaaaaaaaaaaaaa" } });
+  await test("the Column schema has no isDoneColumn field", () => {
+    resetModuleCache();
+    const Column = require("../src/models/Column.js").default;
+    assert.strictEqual(Column.schema.path("isDoneColumn"), undefined);
+  });
+
+  await test("toColumnDTO never exposes isDoneColumn, even for an old document that still stores it", () => {
+    const { toColumnDTO } = require("../src/lib/serialize.js");
+    const dto = toColumnDTO({ _id: A, name: "Done", order: 2, isDoneColumn: true, createdAt: new Date() });
+    assert.ok(!("isDoneColumn" in dto));
+    assert.deepStrictEqual(Object.keys(dto).sort(), ["createdAt", "id", "name", "order"]);
+  });
+
+  await test("rename changes only that column's name", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "To Do", order: 0 }, { _id: B, project: "p1", name: "Doing", order: 1 }] });
+    const res = await patch({ name: "Backlog" });
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(world.committed.get("aaaaaaaaaaaaaaaaaaaaaaaa").isDoneColumn, true);
-    assert.strictEqual(world.committed.get("bbbbbbbbbbbbbbbbbbbbbbbb").isDoneColumn, false);
-    const doneCount = [...world.committed.values()].filter((c) => c.isDoneColumn).length;
-    assert.strictEqual(doneCount, 1);
+    assert.strictEqual(s.committed.get(A).name, "Backlog");
+    assert.strictEqual(s.committed.get(B).name, "Doing");
+    assert.strictEqual(s.calls.updateMany, 0);
   });
 
-  await test("unmarking a done column touches only that column (existing semantics preserved)", async () => {
-    const world = setupMocks({
-      columns: [
-        { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", project: "p1", name: "To Do", order: 0, isDoneColumn: false },
-        { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", project: "p1", name: "Done", order: 1, isDoneColumn: true },
-      ],
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/columns/[columnId]/route.js");
-    const res = await PATCH(fakeReq({ isDoneColumn: false }), { params: { id: "p1", columnId: "bbbbbbbbbbbbbbbbbbbbbbbb" } });
+  await test("reorder (order field) still works", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }] });
+    assert.strictEqual((await patch({ order: 4 })).status, 200);
+    assert.strictEqual(s.committed.get(A).order, 4);
+  });
+
+  await test("a client still sending isDoneColumn:true changes nothing — not stored, no other column touched", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }, { _id: B, project: "p1", name: "B", order: 1 }] });
+    const res = await patch({ isDoneColumn: true });
     assert.strictEqual(res.status, 200);
-    assert.strictEqual(world.committed.get("bbbbbbbbbbbbbbbbbbbbbbbb").isDoneColumn, false);
-    assert.strictEqual(world.committed.get("aaaaaaaaaaaaaaaaaaaaaaaa").isDoneColumn, false);
-    const doneCount = [...world.committed.values()].filter((c) => c.isDoneColumn).length;
-    assert.strictEqual(doneCount, 0); // zero done columns is a valid state
+    assert.ok(!("isDoneColumn" in s.committed.get(A)));
+    assert.ok(!("isDoneColumn" in s.committed.get(B)));
+    assert.strictEqual(s.calls.updateMany, 0);
+    assert.ok(s.calls.findOneAndUpdate.every((c) => !("isDoneColumn" in c.$set)));
   });
 
-  await test("if clearing the other columns fails, the save is rolled back too — never left with two done columns or a half-applied write", async () => {
-    const world = setupMocks({
-      columns: [
-        { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", project: "p1", name: "To Do", order: 0, isDoneColumn: false },
-        { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", project: "p1", name: "Done", order: 1, isDoneColumn: true },
-      ],
-      updateManyShouldFail: true,
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/columns/[columnId]/route.js");
-    const res = await PATCH(fakeReq({ isDoneColumn: true }), { params: { id: "p1", columnId: "aaaaaaaaaaaaaaaaaaaaaaaa" } });
-    // The route maps the failure to a generic 500 via withMongoErrorHandling.
-    assert.strictEqual(res.status, 500);
-    // Critically: aaaaaaaaaaaaaaaaaaaaaaaa's isDoneColumn:true was NEVER committed, because it
-    // shared a transaction with the failed updateMany. Before this fix,
-    // these were two separate writes and aaaaaaaaaaaaaaaaaaaaaaaa.save() would have already
-    // committed by the time updateMany failed — leaving aaaaaaaaaaaaaaaaaaaaaaaa AND bbbbbbbbbbbbbbbbbbbbbbbb both
-    // marked done.
-    assert.strictEqual(world.committed.get("aaaaaaaaaaaaaaaaaaaaaaaa").isDoneColumn, false);
-    assert.strictEqual(world.committed.get("bbbbbbbbbbbbbbbbbbbbbbbb").isDoneColumn, true);
-    const doneCount = [...world.committed.values()].filter((c) => c.isDoneColumn).length;
-    assert.strictEqual(doneCount, 1); // still exactly one — the pre-existing one
+  await test("a rename that also carries isDoneColumn applies only the rename", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }] });
+    assert.strictEqual((await patch({ name: "Review", isDoneColumn: true })).status, 200);
+    assert.deepStrictEqual(s.calls.findOneAndUpdate[0].$set, { name: "Review" });
   });
 
-  await test("repeated toggling never accumulates more than one done column", async () => {
-    const world = setupMocks({
-      columns: [
-        { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", project: "p1", name: "A", order: 0, isDoneColumn: false },
-        { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", project: "p1", name: "B", order: 1, isDoneColumn: false },
-        { _id: "cccccccccccccccccccccccc", project: "p1", name: "C", order: 2, isDoneColumn: false },
-      ],
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/columns/[columnId]/route.js");
-    const sequence = [
-      ["aaaaaaaaaaaaaaaaaaaaaaaa", true],
-      ["bbbbbbbbbbbbbbbbbbbbbbbb", true],
-      ["cccccccccccccccccccccccc", true],
-      ["bbbbbbbbbbbbbbbbbbbbbbbb", true],
-      ["aaaaaaaaaaaaaaaaaaaaaaaa", false],
-    ];
-    for (const [columnId, isDoneColumn] of sequence) {
-      const res = await PATCH(fakeReq({ isDoneColumn }), { params: { id: "p1", columnId } });
-      assert.strictEqual(res.status, 200);
-      const doneCount = [...world.committed.values()].filter((c) => c.isDoneColumn).length;
-      assert.ok(doneCount <= 1, `expected at most one done column after toggling ${columnId}, got ${doneCount}`);
-    }
-    assert.strictEqual(world.committed.get("bbbbbbbbbbbbbbbbbbbbbbbb").isDoneColumn, true);
+  await test("the update is a plain single-document write (no transaction needed any more)", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }] });
+    await patch({ name: "X" });
+    assert.strictEqual(s.calls.findOneAndUpdate.length, 1);
+    assert.strictEqual(s.calls.findOneAndUpdate[0].session, undefined);
   });
 
-  await test("update survives a driver-level retry of the transaction callback (findOneAndUpdate, not a stale document.save())", async () => {
-    const world = setupMocks({
-      columns: [
-        { _id: "aaaaaaaaaaaaaaaaaaaaaaaa", project: "p1", name: "A", order: 0, isDoneColumn: false },
-        { _id: "bbbbbbbbbbbbbbbbbbbbbbbb", project: "p1", name: "B", order: 1, isDoneColumn: true },
-      ],
-    });
-    // Simulates the real MongoDB driver's behavior: session.withTransaction()
-    // catches a transient write-conflict error from inside the callback and
-    // re-invokes the *entire* callback from scratch before finally
-    // committing — which is exactly what happens in the two-different-
-    // columns race this fix targets. The first invocation's write is
-    // discarded entirely (as if it never happened); only the second
-    // invocation's writes should end up committed.
-    let callbackInvocations = 0;
-    const realFindOneAndUpdate = world.ColumnModel.findOneAndUpdate;
-    world.ColumnModel.findOneAndUpdate = async (...args) => {
-      callbackInvocations++;
-      if (callbackInvocations === 1) {
-        throw Object.assign(new Error("WriteConflict"), { errorLabels: ["TransientTransactionError"] });
-      }
-      return realFindOneAndUpdate(...args);
-    };
-    const realStartSession = world.mongooseMock.startSession;
-    world.mongooseMock.startSession = async () => {
-      const session = await realStartSession();
-      const realWithTransaction = session.withTransaction;
-      session.withTransaction = async (fn) => {
-        try {
-          await realWithTransaction(fn);
-        } catch (err) {
-          if (!err.errorLabels?.includes("TransientTransactionError")) throw err;
-          await realWithTransaction(fn); // driver's own automatic retry
-        }
-      };
-      return session;
-    };
-    const realMongoose = require("mongoose");
-    mockModule("mongoose", { ...realMongoose, startSession: world.mongooseMock.startSession });
-    const { PATCH } = require("../src/app/api/projects/[id]/columns/[columnId]/route.js");
-    const res = await PATCH(fakeReq({ isDoneColumn: true }), { params: { id: "p1", columnId: "aaaaaaaaaaaaaaaaaaaaaaaa" } });
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(callbackInvocations, 2);
-    assert.strictEqual(world.committed.get("aaaaaaaaaaaaaaaaaaaaaaaa").isDoneColumn, true);
-    assert.strictEqual(world.committed.get("bbbbbbbbbbbbbbbbbbbbbbbb").isDoneColumn, false);
+  await test("a user without edit permission is still refused and nothing changes", async () => {
+    const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }], canEdit: false });
+    assert.strictEqual((await patch({ name: "Hacked" })).status, 403);
+    assert.strictEqual(s.committed.get(A).name, "A");
+  });
+
+  await test("unknown column / invalid name are still rejected", async () => {
+    setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }] });
+    assert.strictEqual((await patch({ name: "x" }, B)).status, 404);
+    assert.strictEqual((await patch({ name: "   " })).status, 400);
   });
 
   summary();

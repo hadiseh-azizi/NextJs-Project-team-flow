@@ -90,7 +90,7 @@ const four = () => [
   { _id: ID(1), project: "p1", name: "To Do", order: 0 },
   { _id: ID(2), project: "p1", name: "In Progress", order: 1 },
   { _id: ID(3), project: "p1", name: "Review", order: 2 },
-  { _id: ID(4), project: "p1", name: "Done", order: 3, isDoneColumn: true },
+  { _id: ID(4), project: "p1", name: "Done", order: 3 },
 ];
 const idsInOrder = (store) => store.rows.filter((r) => r.project === "p1").sort((a, b) => a.order - b.order).map((r) => r._id);
 
@@ -142,16 +142,15 @@ const idsInOrder = (store) => store.rows.filter((r) => r.project === "p1").sort(
     assert.deepStrictEqual(store.rows.map((r) => r.order).sort(), [0, 1, 2, 3]);
     const body = await res.json();
     assert.deepStrictEqual(body.columns.map((c) => c.id), [ID(3), ID(1), ID(2), ID(4)]);
-    // nothing but `order` changed: names, done flag, count
+    // nothing but `order` changed: names and count
     assert.strictEqual(store.rows.length, 4);
-    assert.strictEqual(store.rows.find((r) => r._id === ID(4)).isDoneColumn, true);
     assert.strictEqual(store.rows.find((r) => r._id === ID(3)).name, "Review");
   });
-  await test("the Done column can be reordered like any other (no new restriction)", async () => {
+  await test("a column that happens to be named Done reorders like any other (the name carries no meaning)", async () => {
     const store = setup({ columns: four() });
     assert.strictEqual((await call({ columnOrder: [ID(4), ID(1), ID(2), ID(3)] })).status, 200);
     assert.strictEqual(idsInOrder(store)[0], ID(4));
-    assert.strictEqual(store.rows.filter((r) => r.isDoneColumn).length, 1);
+    assert.ok(store.rows.every((r) => !("isDoneColumn" in r)));
   });
   await test("normalizes gaps left by deleted columns (orders 0,5,9 -> 0,1,2)", async () => {
     const store = setup({ columns: [

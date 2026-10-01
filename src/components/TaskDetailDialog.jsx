@@ -358,11 +358,6 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
             {columns.map((c) => (
               <MenuItem key={c.id} value={c.id}>
                 {c.name}
-                {c.isDoneColumn && (
-                  <Typography component="span" variant="caption" color="success.main" sx={{ ml: 1 }}>
-                    (final)
-                  </Typography>
-                )}
               </MenuItem>
             ))}
           </Select>

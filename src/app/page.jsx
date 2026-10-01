@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Box, Container, Typography, Button, Grid, Avatar } from "@mui/material";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import TeamFlowBrand from "@/components/TeamFlowBrand";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
 import { BRAND } from "@/lib/brand";
@@ -9,7 +8,7 @@ import { pastelForString } from "@/lib/pastelColor";
 const FEATURES = [
   {
     title: "Kanban boards",
-    desc: "Move tasks between To Do, In Progress, and Done columns.",
+    desc: "Organize work into columns you name yourself, and move tasks between them.",
   },
   {
     title: "Teams & project managers",
@@ -37,8 +36,8 @@ function BoardPreview() {
       cards: [{ title: "Simulate in MATLAB", who: "M" }],
     },
     {
-      label: "Done",
-      done: true,
+      label: "Review",
+      hideOnPhone: true,
       cards: [{ title: "Mathematical modeling" }, { title: "Controller design", who: "A" }],
     },
   ];
@@ -48,10 +47,9 @@ function BoardPreview() {
         <Box
           key={c.label}
           // The third column is dropped on phones: three would be ~90px wide each.
-          sx={{ flex: 1, minWidth: 0, bgcolor: "var(--brand-surface-tint)", borderRadius: 1, p: 1, display: c.done ? { xs: "none", sm: "block" } : "block" }}
+          sx={{ flex: 1, minWidth: 0, bgcolor: "var(--brand-surface-tint)", borderRadius: 1, p: 1, display: c.hideOnPhone ? { xs: "none", sm: "block" } : "block" }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 0.5, pb: 1, minHeight: 24 }}>
-            {c.done && <CheckCircleIcon sx={{ fontSize: 14, color: "success.main" }} />}
             <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap>
               {c.label}
             </Typography>
@@ -74,7 +72,7 @@ function BoardPreview() {
                   boxShadow: "var(--brand-shadow-card)",
                   overflow: "hidden",
                   // A 3px brand-gradient edge on the left of each card.
-                  "&::before": { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--brand-gradient-strong)", opacity: c.done ? 0.45 : 0.9 },
+                  "&::before": { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--brand-gradient-strong)", opacity: 0.9 },
                 }}
               >
                 <Typography sx={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.35 }}>{card.title}</Typography>

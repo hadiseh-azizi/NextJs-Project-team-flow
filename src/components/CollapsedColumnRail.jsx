@@ -1,18 +1,21 @@
 "use client";
 
-import { ButtonBase, Tooltip, Typography, Box } from "@mui/material";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import { ButtonBase, Tooltip, Typography } from "@mui/material";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
-// The narrow strip a collapsed Kanban column turns into: expand chevron,
-// task count, and the column name set vertically. The whole strip is one
-// real <button>, so a click anywhere on the column (or Enter/Space when
-// focused) expands it. It only renders the strip; KanbanBoard owns the
-// state and the width/height transition.
+// What a collapsed Kanban column turns into: a short, narrower panel that
+// is just the column's header row — the name on one horizontal line (cut
+// with an ellipsis when it doesn't fit; the full name is in the tooltip and
+// the accessible label), the task count, and an expand chevron. The name
+// is never rotated or stacked.
+//
+// The whole panel is one real <button>, so a click anywhere on it (or
+// Enter/Space when focused) expands the column. It only renders the
+// panel; KanbanBoard owns the state and the width/height transition.
 export default function CollapsedColumnRail({ column, taskCount, onExpand }) {
   const taskLabel = `${taskCount} ${taskCount === 1 ? "task" : "tasks"}`;
   return (
-    <Tooltip title="Expand column" placement="right" enterDelay={500}>
+    <Tooltip title="Expand column" placement="bottom-start" enterDelay={500}>
       <ButtonBase
         type="button"
         onClick={onExpand}
@@ -21,15 +24,15 @@ export default function CollapsedColumnRail({ column, taskCount, onExpand }) {
         aria-label={`Expand column ${column.name}, ${taskLabel}`}
         sx={(theme) => ({
           display: "flex",
-          flexDirection: "column",
           alignItems: "center",
-          justifyContent: "flex-start",
-          gap: 1,
+          gap: 0.75,
           width: "100%",
-          height: "100%",
-          py: 1,
+          // Same 48px as the expanded column's header (8px padding + 32px row),
+          // so the title doesn't shift vertically when the column opens.
+          height: 48,
+          px: 1.5,
           color: "text.secondary",
-          textAlign: "center",
+          textAlign: "left",
           "&:hover": { bgcolor: theme.palette.action.hover, color: "text.primary" },
           // The theme's press feedback would scale the whole column.
           "&:active:not(.Mui-disabled)": { transform: "none" },
@@ -37,27 +40,19 @@ export default function CollapsedColumnRail({ column, taskCount, onExpand }) {
           "&.Mui-focusVisible": { outlineOffset: "-2px" },
         })}
       >
-        <ChevronRightIcon sx={{ fontSize: 18 }} />
-        <Typography variant="caption" sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
-          {taskCount}
-        </Typography>
-        {column.isDoneColumn && <CheckCircleIcon aria-hidden="true" sx={{ fontSize: 16, color: "success.main" }} />}
         <Typography
           component="span"
           variant="subtitle2"
+          noWrap
           title={column.name}
-          sx={{
-            color: "text.primary",
-            writingMode: "vertical-rl",
-            maxHeight: 168,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
+          sx={{ flexGrow: 1, minWidth: 0, color: "text.primary" }}
         >
           {column.name}
         </Typography>
-        <Box component="span" sx={{ flexGrow: 1 }} />
+        <Typography variant="caption" component="span" sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
+          {taskCount}
+        </Typography>
+        <ChevronRightIcon aria-hidden="true" sx={{ fontSize: 20, flexShrink: 0 }} />
       </ButtonBase>
     </Tooltip>
   );

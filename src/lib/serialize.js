@@ -48,7 +48,6 @@ export function toColumnDTO(column) {
     id: idStr(column._id),
     name: column.name,
     order: column.order,
-    isDoneColumn: !!column.isDoneColumn,
     // Exposed so the board can break ties deterministically when two
     // columns ever share an `order` value — see lib/columnOrderCompare.js.
     createdAt: column.createdAt ? new Date(column.createdAt).toISOString() : null,

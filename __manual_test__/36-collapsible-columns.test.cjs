@@ -91,8 +91,8 @@ const throwingStorage = {
     assert.deepStrictEqual(s.data, {});
   });
 
-  await test("collapsed width is a fixed narrow strip", () => {
-    assert.ok(COLLAPSED_COLUMN_WIDTH >= 40 && COLLAPSED_COLUMN_WIDTH <= 56);
+  await test("collapsed width is a fixed panel: narrower than expanded (288) but wide enough for a one-line title", () => {
+    assert.ok(COLLAPSED_COLUMN_WIDTH >= 144 && COLLAPSED_COLUMN_WIDTH < 288);
   });
 
   const root = path.join(__dirname, "..", "src");

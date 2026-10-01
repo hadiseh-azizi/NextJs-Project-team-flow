@@ -9,14 +9,11 @@ import AddIcon from "@mui/icons-material/Add";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import DragIndicatorIcon from "@mui/icons-material/DragIndicator";
-import CheckCircleIcon from "@mui/icons-material/CheckCircle";
-import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import TaskCard from "@/components/TaskCard";
 import CollapsedColumnRail from "@/components/CollapsedColumnRail";
 import TaskDetailDialog from "@/components/TaskDetailDialog";
 import NewTaskModal from "@/components/NewTaskModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import ChoiceDialog from "@/components/ChoiceDialog";
 import EmptyState from "@/components/EmptyState";
 import FadeInStagger from "@/components/FadeInStagger";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
@@ -27,12 +24,6 @@ import { applyColumnOrder } from "@/lib/columnReorder";
 import { useColumnDragReorder } from "@/lib/useColumnDragReorder";
 import { useCollapsedColumns } from "@/lib/useCollapsedColumns";
 import { COLLAPSED_COLUMN_WIDTH, COLLAPSE_MS, COLLAPSE_EASE } from "@/lib/collapsedColumns";
-
-// Name used when the user opts into creating a Completed column from the
-// "task completed, but this board has no Completed column yet" prompt —
-// see handleCreateCompletedColumnAndMove below. Purely a starting label;
-// like any other column, it can be renamed afterwards.
-const NEW_DONE_COLUMN_NAME = "Completed";
 
 export default function KanbanBoard({ projectId, columns, tasks, onChanged, assignableUsers, canEdit = true }) {
   const isMounted = useIsMounted();
@@ -63,33 +54,15 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   // PATCHes for the same task (and the ordering confusion that would
   // cause) can't happen.
   const movingTaskIds = useRef(new Set());
-  // Guards per-column single-flight requests that have no other in-flight
-  // tracking of their own: renaming (the field can trigger a save from
-  // both onBlur and onKeyDown/Enter, which can fire close enough together
-  // to both start a request for the same column) and toggling the "done"
-  // column flag (keyed as `done:${columnId}` to share this one Set
-  // without colliding with a rename in flight for the same column).
+  // Guards per-column single-flight renames (the field can trigger a save
+  // from both onBlur and onKeyDown/Enter, which can fire close enough
+  // together to both start a request for the same column).
   const renamingInFlight = useRef(new Set());
 
   // Step 1 of task completion: confirm before marking it completed at all.
   const [completingTask, setCompletingTask] = useState(null);
   const [completingBusy, setCompletingBusy] = useState(false);
   const [completingError, setCompletingError] = useState("");
-
-  // Step 2, case A: a Completed column already exists — ask whether to
-  // move the now-completed task there. Holds { task, column }.
-  const [moveStep, setMoveStep] = useState(null);
-  const [moveStepBusy, setMoveStepBusy] = useState(false);
-  const [moveStepError, setMoveStepError] = useState("");
-
-  // Step 2, case B: no Completed column exists yet — optionally offer to
-  // create one and move the task into it. Holds { task }. Tracks the
-  // column it creates so a failed move can be retried without creating a
-  // second "Completed" column.
-  const [noDoneColumnStep, setNoDoneColumnStep] = useState(null);
-  const [noDoneColumnBusy, setNoDoneColumnBusy] = useState(false);
-  const [noDoneColumnError, setNoDoneColumnError] = useState("");
-  const createdDoneColumnId = useRef(null);
 
   const [notice, setNotice] = useState("");
 
@@ -170,7 +143,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     return () => clearTimeout(timer);
   }, [columns, tasks]);
 
-  const existingDoneColumn = sortedColumns.find((c) => c.isDoneColumn) || null;
   const openTask = tasks.find((t) => t.id === openTaskId) || null;
 
   // Optimistic column reorder: show the new order immediately, save it
@@ -395,30 +367,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     }
   }
 
-  async function handleToggleDoneColumn(column) {
-    // The menu item that triggers this is removed from the DOM as soon as
-    // the menu closes below, so a literal double-click can't reach it
-    // twice — this guard is for the same class of fast-repeat trigger the
-    // rename/move handlers above already guard against (e.g. assistive
-    // tech re-dispatching the activation event), kept consistent with
-    // those rather than because it's been observed here specifically.
-    if (renamingInFlight.current.has(`done:${column.id}`)) return;
-    renamingInFlight.current.add(`done:${column.id}`);
-    setMenuAnchor(null);
-    try {
-      await apiFetch(`/api/projects/${projectId}/columns/${column.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isDoneColumn: !column.isDoneColumn }),
-      });
-      if (isMounted()) onChanged();
-    } catch (err) {
-      if (isMounted()) setError(errorMessage(err, "Couldn't update the column. Please try again."));
-    } finally {
-      renamingInFlight.current.delete(`done:${column.id}`);
-    }
-  }
-
   // Clicking the checkmark on an already-completed task reopens it
   // directly — the two-step confirmation flow below is only for *marking*
   // a task completed (per the product requirement); reversing that is a
@@ -442,9 +390,9 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     setCompletingTask(task);
   }
 
-  // Step 1: the task is marked completed here — independent of column,
-  // and this is the only thing this step does. Whether/where to move it
-  // is decided afterwards (step 2), never assumed.
+  // Marks the task completed — independent of column. Nothing else
+  // changes: the task stays exactly where it is, and no column is ever
+  // looked up or created as a result.
   async function confirmCompleteTask() {
     if (!completingTask || completingBusy) return;
     setCompletingBusy(true);
@@ -455,107 +403,16 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: true }),
       });
-      const justCompleted = completingTask;
       if (!isMounted()) return;
       setCompletingTask(null);
-      // Progress/dashboard stats must reflect the completion immediately,
-      // regardless of what happens in step 2 (or whether there even is
-      // one) — see the requirement that a completed task always counts
-      // toward progress, in every column.
+      // Progress/dashboard stats must reflect the completion immediately.
       onChanged();
-
-      if (existingDoneColumn) {
-        if (justCompleted.columnId === existingDoneColumn.id) {
-          // Already sitting in the Completed column — nothing to ask.
-          setNotice("Task completed.");
-        } else {
-          setMoveStepError("");
-          setMoveStep({ task: justCompleted, column: existingDoneColumn });
-        }
-      } else {
-        setNoDoneColumnError("");
-        createdDoneColumnId.current = null;
-        setNoDoneColumnStep({ task: justCompleted });
-      }
+      setNotice("Task completed.");
     } catch (err) {
       if (isMounted()) setCompletingError(errorMessage(err, "Couldn't complete the task. Please try again."));
     } finally {
       if (isMounted()) setCompletingBusy(false);
     }
-  }
-
-  // Step 2, case A — "Move to Completed" for an existing Completed column.
-  async function handleMoveToCompleted() {
-    if (!moveStep || moveStepBusy) return;
-    setMoveStepBusy(true);
-    setMoveStepError("");
-    try {
-      await apiFetch(`/api/tasks/${moveStep.task.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnId: moveStep.column.id }),
-      });
-      if (!isMounted()) return;
-      setMoveStep(null);
-      setNotice("Task moved to Completed.");
-      onChanged();
-    } catch (err) {
-      if (isMounted()) setMoveStepError(errorMessage(err, "Couldn't move the task. Please try again."));
-    } finally {
-      if (isMounted()) setMoveStepBusy(false);
-    }
-  }
-
-  function handleKeepTaskHere() {
-    setMoveStep(null);
-    setNotice("Task completed and kept in the current column.");
-  }
-
-  // Step 2, case B — no Completed column exists. Creating one is always
-  // optional, never automatic (see the column-management requirements
-  // above). If a retry lands after the column was already created but the
-  // move failed, this reuses that column instead of creating a second one.
-  async function handleCreateCompletedColumnAndMove() {
-    if (!noDoneColumnStep || noDoneColumnBusy) return;
-    setNoDoneColumnBusy(true);
-    setNoDoneColumnError("");
-    try {
-      let doneColumnId = createdDoneColumnId.current;
-      if (!doneColumnId) {
-        const created = await apiFetch(`/api/projects/${projectId}/columns`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: NEW_DONE_COLUMN_NAME }),
-        });
-        await apiFetch(`/api/projects/${projectId}/columns/${created.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isDoneColumn: true }),
-        });
-        doneColumnId = created.id;
-        createdDoneColumnId.current = doneColumnId;
-      }
-      await apiFetch(`/api/tasks/${noDoneColumnStep.task.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ columnId: doneColumnId }),
-      });
-      if (!isMounted()) return;
-      setNoDoneColumnStep(null);
-      createdDoneColumnId.current = null;
-      setNotice("Task moved to Completed.");
-      onChanged();
-    } catch (err) {
-      if (isMounted()) setNoDoneColumnError(errorMessage(err, "Couldn't create the Completed column. Please try again."));
-    } finally {
-      if (isMounted()) setNoDoneColumnBusy(false);
-    }
-  }
-
-  function handleKeepHereNoColumn() {
-    setNoDoneColumnStep(null);
-    createdDoneColumnId.current = null;
-    setNotice("Task completed and kept in the current column.");
   }
 
   async function confirmColumnDelete() {
@@ -670,6 +527,10 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               base={40}
               animate={!seenIds.current.has(column.id)}
               sx={{
+                // Collapsing narrows the column (flex-basis); the title stays horizontal.
+                // Sibling columns keep their own fixed widths, so the board simply
+                // gets shorter and more columns come into view; it still scrolls
+                // horizontally when the total is wider than the viewport.
                 flex: collapsed ? `0 0 ${COLLAPSED_COLUMN_WIDTH}px` : { xs: "0 0 84%", sm: "0 0 288px" },
                 minWidth: 0,
                 transition: `flex-basis ${COLLAPSE_MS}ms ${COLLAPSE_EASE}`,
@@ -686,13 +547,13 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1fr)",
                 overflow: "hidden",
-                minHeight: 160,
+                minHeight: collapsed ? 0 : 160,
                 borderRadius: 2,
                 bgcolor: isOver ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.08) : "var(--brand-surface-tint)",
                 border: "1px solid",
                 borderColor: isOver ? "transparent" : theme.palette.divider,
                 boxShadow: isOver ? `inset 0 0 0 1.5px ${theme.palette.primary.main}` : "none",
-                transition: "background-color .12s ease, box-shadow .12s ease",
+                transition: `background-color .12s ease, box-shadow .12s ease, min-height ${COLLAPSE_MS}ms ${COLLAPSE_EASE}`,
                 willChange: "auto",
                 // Column being reordered (see lib/useColumnDragReorder.js,
                 // which sets this attribute): lifted with the theme's
@@ -719,7 +580,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               <Box
                 sx={{
                   gridArea: "1 / 1",
-                  maxHeight: collapsed ? 280 : 0,
+                  maxHeight: collapsed ? 56 : 0,
                   overflow: "hidden",
                   opacity: collapsed ? 1 : 0,
                   visibility: collapsed ? "visible" : "hidden",
@@ -727,7 +588,10 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                   "@media (prefers-reduced-motion: reduce)": { transitionDelay: "0s" },
                 }}
               >
-                <CollapsedColumnRail column={column} taskCount={colTasks.length} onExpand={() => handleToggleCollapsed(column)} />
+                {/* Fixed to the collapsed width (less the column's 1px borders) so the title never re-wraps mid-animation. */}
+                <Box sx={{ width: COLLAPSED_COLUMN_WIDTH - 2 }}>
+                  <CollapsedColumnRail column={column} taskCount={colTasks.length} onExpand={() => handleToggleCollapsed(column)} />
+                </Box>
               </Box>
               <Box
                 sx={{
@@ -769,11 +633,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                           >
                             <DragIndicatorIcon sx={{ fontSize: 18 }} />
                           </IconButton>
-                        </Tooltip>
-                      )}
-                      {column.isDoneColumn && (
-                        <Tooltip title="Final column — tasks here count as “done” in the progress report">
-                          <CheckCircleIcon aria-label="Final column" sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
                         </Tooltip>
                       )}
                       {renamingId === column.id ? (
@@ -978,17 +837,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         >
           Rename
         </MenuItem>
-        <MenuItem onClick={() => handleToggleDoneColumn(menuColumn)}>
-          {menuColumn?.isDoneColumn ? (
-            <>
-              <CheckCircleIcon fontSize="small" sx={{ mr: 1, color: "success.main" }} /> Unmark as final column
-            </>
-          ) : (
-            <>
-              <CheckCircleOutlineIcon fontSize="small" sx={{ mr: 1 }} /> Mark as final column
-            </>
-          )}
-        </MenuItem>
         <MenuItem
           onClick={() => {
             setDeleteColumnError("");
@@ -1054,7 +902,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         error={deleteColumnError}
       />
 
-      {/* Step 1 — confirm before marking a task completed at all. */}
+      {/* Confirm before marking a task completed. */}
       <ConfirmDialog
         open={!!completingTask}
         title="Complete task"
@@ -1069,38 +917,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         }}
         loading={completingBusy}
         error={completingError}
-      />
-
-      {/* Step 2, case A — a Completed column exists: move it there, or keep it here. */}
-      <ChoiceDialog
-        open={!!moveStep}
-        title="Move to Completed?"
-        message={moveStep ? `Do you want to move “${moveStep.task.title}” to the “${moveStep.column.name}” column?` : ""}
-        primaryLabel="Move to Completed"
-        primaryLoadingLabel="Moving..."
-        onPrimary={handleMoveToCompleted}
-        secondaryLabel="Keep Here"
-        onSecondary={handleKeepTaskHere}
-        loading={moveStepBusy}
-        error={moveStepError}
-      />
-
-      {/* Step 2, case B — no Completed column exists: creating one is optional. */}
-      <ChoiceDialog
-        open={!!noDoneColumnStep}
-        title="No Completed column yet"
-        message={
-          noDoneColumnStep
-            ? `“${noDoneColumnStep.task.title}” is completed and stays in its current column. This board doesn't have a Completed column — you can create one and move it there, or leave things as they are.`
-            : ""
-        }
-        primaryLabel="Create Completed Column & Move"
-        primaryLoadingLabel="Creating..."
-        onPrimary={handleCreateCompletedColumnAndMove}
-        secondaryLabel="Keep Here"
-        onSecondary={handleKeepHereNoColumn}
-        loading={noDoneColumnBusy}
-        error={noDoneColumnError}
       />
 
       <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError("")}>

@@ -1,12 +1,11 @@
 // Whether a task counts as "done" is its own persisted `completed` flag —
-// never derived from which column it's sitting in. See models/Task.js and
-// the two-step completion flow in KanbanBoard.jsx.
+// never derived from which column it's sitting in (no column is a "done"
+// column). See models/Task.js and the completion confirmation in
+// KanbanBoard.jsx.
 //
-// This used to be computed ad hoc in four places (project detail page,
-// ProjectCard, OverviewStats, ProgressChart) as "is this task's column
-// flagged isDoneColumn" — that logic is gone now that completion is
-// independent of column, so it's centralized here instead of copied a
-// fifth time.
+// Progress is counted from this flag alone, centralized here rather than
+// re-derived in each view (project detail page, ProjectCard,
+// OverviewStats, ProgressChart).
 
 export function isTaskCompleted(task) {
   return !!task?.completed;

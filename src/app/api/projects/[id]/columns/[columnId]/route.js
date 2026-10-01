@@ -8,13 +8,14 @@ import { toColumnDTO } from "@/lib/serialize";
 import { getAccessibleProject, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
-import { validateRequiredString, validateInteger, validateBooleanField } from "@/lib/validation";
+import { validateRequiredString, validateInteger } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { withOptionalTransaction } from "@/lib/mongoTransaction";
 
 const MAX_COLUMN_NAME_LENGTH = 60;
 
-// Rename, reorder, or flag a column as the "done" column.
+// Rename or reorder a column. (Columns have no special meaning — in
+// particular none is a "completed" column; completion lives on the task.)
 export async function PATCH(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -51,62 +52,17 @@ export async function PATCH(req, { params }) {
     if (orderResult.error) return NextResponse.json({ error: orderResult.error }, { status: 400 });
     updateFields.order = orderResult.value;
   }
-  if (body.isDoneColumn !== undefined) {
-    const doneResult = validateBooleanField(body.isDoneColumn, { field: "isDoneColumn" });
-    if (doneResult.error) return NextResponse.json({ error: doneResult.error }, { status: 400 });
-    updateFields.isDoneColumn = doneResult.value;
-  }
 
   return withMongoErrorHandling(async () => {
-    // Marking a column "done" and clearing the flag on every other column
-    // used to be two separate writes (save, then updateMany). If the
-    // second write failed, or another request landed in between, the
-    // project could end up with two done columns (or, under a race
-    // between two different columns each being marked done, an
-    // unpredictable mix). The progress calculation elsewhere assumes at
-    // most one done column, so that invariant has to hold exactly, not
-    // just "most of the time."
-    //
-    // Both writes now happen inside a single MongoDB transaction. If the
-    // updateMany fails, the update to this column is rolled back too —
-    // never a partial state. For two concurrent requests marking two
-    // *different* columns as done, both transactions touch the same set
-    // of documents (each one's updateMany reaches into the column the
-    // other is trying to update), so the server aborts one as a write
-    // conflict; withOptionalTransaction's session.withTransaction()
-    // retries it automatically against the now-committed state. Whichever
-    // request effectively "wins" is nondeterministic, but the result is
-    // always exactly one done column, never zero-via-corruption or two.
-    //
-    // The update is done with findOneAndUpdate (an explicit $set) rather
-    // than fetching a Mongoose document and calling .save() — that retry
-    // is exactly the case where .save() would be unsafe here: Mongoose
-    // clears a document's "modified paths" once a save is attempted, so
-    // if the transaction is retried, a second .save() on the same
-    // in-memory document could silently no-op instead of re-sending the
-    // change. findOneAndUpdate has no such state to go stale — every
-    // retry of the callback re-issues the identical update.
-    //
-    // Unmarking a column (isDoneColumn: false) only ever changes that one
-    // document — it's fine for a project to have zero done columns, so
-    // no other column needs to change. Existing semantics preserved.
-    const updated = await withOptionalTransaction(async (session) => {
-      const doc = await Column.findOneAndUpdate(
-        { _id: columnId, project: id },
-        { $set: updateFields },
-        { new: true, session: session ?? undefined }
-      );
-
-      if (updateFields.isDoneColumn === true) {
-        await Column.updateMany(
-          { project: id, _id: { $ne: columnId } },
-          { $set: { isDoneColumn: false } },
-          { session: session ?? undefined }
-        );
-      }
-
-      return doc;
-    });
+    // Columns are all equal: renaming/reordering touches this one document
+    // and nothing else. (There is no "done" flag to keep unique across the
+    // project any more, so no multi-document transaction is needed.)
+    const updated = await Column.findOneAndUpdate(
+      { _id: columnId, project: id },
+      { $set: updateFields },
+      { new: true }
+    );
+    if (!updated) return NextResponse.json({ error: "Column not found" }, { status: 404 });
 
     return NextResponse.json(toColumnDTO(updated));
   });

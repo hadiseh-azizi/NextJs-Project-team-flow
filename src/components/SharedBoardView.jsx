@@ -157,11 +157,6 @@ export default function SharedBoardView({ columns, tasks }) {
               })}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, pl: 1, pr: 0.25, minHeight: 32 }}>
-                {column.isDoneColumn && (
-                  <Tooltip title="Final column — tasks here count as “done” in the progress report">
-                    <CheckCircleIcon aria-label="Final column" sx={{ fontSize: 16, color: "success.main", flexShrink: 0 }} />
-                  </Tooltip>
-                )}
                 <Typography variant="subtitle2" noWrap title={column.name} sx={{ flexGrow: 1, minWidth: 0 }}>
                   {column.name}
                 </Typography>

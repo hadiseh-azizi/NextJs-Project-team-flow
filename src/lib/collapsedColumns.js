@@ -8,7 +8,9 @@
 // have since been deleted can never break the board: the worst outcome is
 // that a column shows expanded.
 
-export const COLLAPSED_COLUMN_WIDTH = 48; // px — matches the rail layout in KanbanBoard
+// px — a collapsed column is a narrower panel (expanded is 288), wide enough for a
+// horizontal one-line title. Spacing is on the same 8px grid as the rest of the board.
+export const COLLAPSED_COLUMN_WIDTH = 192;
 export const COLLAPSE_MS = 220; // same duration as the app's other entrance/settle motion
 export const COLLAPSE_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 
