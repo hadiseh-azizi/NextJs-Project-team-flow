@@ -14,7 +14,7 @@ import { staggerDelay } from "@/lib/staggerDelay";
 // for it above the card, so its bottom row sits on top of the card's top
 // border and the tab reads as attached to the card, not floating above it.
 const TAB_HEIGHT = 30;
-const CARD_RADIUS = 8;
+const CARD_RADIUS = 30;
 
 const VISUALLY_HIDDEN = {
   position: "absolute",
@@ -85,7 +85,7 @@ export default function ProjectCard({ project, index = 0 }) {
               border: "1px solid",
               borderColor: tab.edge,
               borderBottom: "none",
-              borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0`,
+              borderRadius: `7px 20px 0 0`,
               boxShadow: `0 -1px 3px ${alpha(dark ? theme.palette.surface.sunken : theme.palette.text.primary, dark ? 0.6 : 0.08)}`,
               transition: "border-color .15s ease",
               // Hover: a slightly stronger version of the same gradient fades
