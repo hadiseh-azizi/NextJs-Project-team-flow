@@ -13,7 +13,10 @@ import { WORDMARK } from "@/lib/brand";
 //   size="md"        navigation bars
 //   size="lg"        landing and authentication pages
 //
-// Pass href={null} to render the brand without a link.
+// Pass href={null} to render the brand without a link. Pass
+// collapseOnNarrow to drop the wordmark (symbol stays) below 400px, for
+// headers that share a row with buttons; the symbol keeps its 333:276
+// proportions at every size.
 const SIZES = {
   md: { symbol: 28, font: "1.125rem", gap: 1 },
   lg: { symbol: 36, font: "1.5rem", gap: 1.25 },
@@ -27,7 +30,7 @@ const SYMBOL_RATIO = 333 / 276;
 // The values are the official wordmark colors and live in lib/brand.js.
 const FLOW_GRADIENT = WORDMARK.gradient;
 
-export default function TeamFlowBrand({ variant = "full", size = "md", href = "/" }) {
+export default function TeamFlowBrand({ variant = "full", size = "md", href = "/", collapseOnNarrow = false }) {
   const s = SIZES[size] || SIZES.md;
   const iconOnly = variant === "icon";
 
@@ -58,6 +61,7 @@ export default function TeamFlowBrand({ variant = "full", size = "md", href = "/
             letterSpacing: "-0.025em",
             whiteSpace: "nowrap",
             color: "text.primary",
+            ...(collapseOnNarrow && { "@media (max-width:399.95px)": { display: "none" } }),
             "& .tf-brand-flow": {
               // Negative tracking shrinks the box below the last glyph;
               // without this the gradient clip shaves the edge off the "w".

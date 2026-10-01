@@ -168,10 +168,16 @@ function fakeReq(body) {
     });
     mockModule("@/models/User", {});
     mockModule("@/models/Invitation", {});
+    let editorsPull = null;
     mockModule("@/models/Project", {
       find: () => ({
         session: () => ({ lean: async () => [{ _id: "333333333333333333333333" }] }),
       }),
+      // Removed members also lose any individually granted edit access.
+      updateMany: async (filter, update, opts) => {
+        assert.strictEqual(opts.session, undefined);
+        editorsPull = update.$pull.editors;
+      },
     });
     mockModule("@/models/Task", {
       updateMany: async (filter, update, opts) => {
@@ -189,6 +195,7 @@ function fakeReq(body) {
     assert.strictEqual(res.status, 200, `expected 200, got ${res.status}: ${JSON.stringify(json)}`);
     assert.strictEqual(pulledMember, "444444444444444444444444");
     assert.deepStrictEqual(unassignedFilter, { project: { $in: ["333333333333333333333333"] } });
+    assert.strictEqual(editorsPull, "444444444444444444444444");
   });
 
   // ---- POST /api/auth/register (fallback path specifically) ----------

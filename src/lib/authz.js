@@ -37,12 +37,17 @@ export function projectAccessFor(project, userId) {
 }
 
 // The two values `Project.editingMode` can hold — see models/Project.js.
+// "everyone": anyone with project access can edit. "manager_approval":
+// only the manager and the members the manager has individually selected
+// (`Project.editors`) can edit. The stored value "manager_approval" is
+// kept as-is, rather than renamed, so existing projects keep working
+// without a data migration; the UI calls it "Only selected members".
 // Exported so the PATCH route can validate against the same list rather
 // than duplicating it.
 export const EDITING_MODES = ["everyone", "manager_approval"];
 
-// Whether `project.editingMode` currently requires manager approval for
-// direct edits. Read defensively rather than relying on the schema
+// Whether `project.editingMode` currently limits direct edits to the
+// manager and the individually selected `editors`. Read defensively rather than relying on the schema
 // default (`"everyone"` — see models/Project.js): a `.lean()` query never
 // applies Mongoose defaults, so a project saved before this field existed
 // comes back with `editingMode` simply `undefined`, and that has to mean
@@ -58,8 +63,9 @@ export function isManagerApprovalMode(project) {
 // access via projectAccessFor()/getAccessibleProject()/getTaskAccess();
 // this is the second, narrower gate that only applies once that's true.
 // The manager can always edit; everyone else can edit only when the
-// project is in "everyone" mode, or when they're individually listed in
-// `editors` while it's in "manager_approval" mode.
+// project is in "everyone" mode, or when the manager has individually
+// selected them in `editors` while it's in "manager_approval" mode. Team
+// membership alone never grants edit rights in that mode.
 export function canEditProject(project, userId) {
   const managerId = String(project.manager?._id ?? project.manager);
   if (managerId === userId) return true;
@@ -85,8 +91,19 @@ export async function applyProjectMembership(project, targetUserId, action) {
     const seed = (project.team.members || []).map((m) => String(m._id ?? m));
     await Project.updateOne({ _id: project._id, members: { $exists: false } }, { $set: { members: seed } });
   }
-  const update = action === "add" ? { $addToSet: { members: targetUserId } } : { $pull: { members: targetUserId } };
+  // Removing someone's project access also drops any edit permission they
+  // held, so re-adding them later doesn't silently bring it back.
+  const update = action === "add" ? { $addToSet: { members: targetUserId } } : { $pull: { members: targetUserId, editors: targetUserId } };
   await Project.updateOne({ _id: project._id }, update);
+}
+
+// Whether `userId` can be given individual edit permission on this
+// project: they must be on the project's team AND already have access to
+// the project (and not be the manager, who always can edit). Callers pass
+// a project loaded with its team populated.
+export function isEligibleEditor(project, userId) {
+  const { isManager, isTeamMember, isProjectMember } = projectAccessFor(project, userId);
+  return !isManager && isTeamMember && isProjectMember;
 }
 
 // Grants or revokes one user's explicit edit permission — meaningful only

@@ -208,6 +208,13 @@ export async function DELETE(req, { params }) {
           { $pull: { assignees: removeUserId } },
           { session: session ?? undefined }
         );
+        // A removed member also loses any individually granted edit
+        // access, so it can't come back if they're re-added to the team.
+        await Project.updateMany(
+          { _id: { $in: projectIds } },
+          { $pull: { editors: removeUserId } },
+          { session: session ?? undefined }
+        );
       }
     });
 

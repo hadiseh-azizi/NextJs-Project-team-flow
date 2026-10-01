@@ -27,9 +27,9 @@ const ProjectSchema = new Schema({
   // Who's allowed to directly edit this project's tasks/columns/settings.
   // "everyone" (the schema default, and the app's original behavior)
   // lets anyone with project access edit directly; "manager_approval"
-  // restricts direct editing to the manager and whoever's listed in
-  // `editors` below — everyone else can still view, and can submit a
-  // ChangeRequest instead (see models/ChangeRequest.js). This is a
+  // restricts direct editing to the manager and whoever the manager has
+  // individually selected in `editors` below — everyone else can still
+  // view the project, read-only. This is a
   // schema default, not a "field present vs. absent" distinction like
   // `members` above — but routes read it via lib/authz.js's
   // canEditProject(), which treats a missing value the same as

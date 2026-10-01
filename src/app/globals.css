@@ -28,6 +28,19 @@ html[data-theme-mode="dark"] {
 }
 html {
   background-color: var(--brand-background);
+  /* The page atmosphere: faint washes of the mark's four colors, fixed to
+     the viewport so they stay put while content scrolls. Defined once in
+     lib/brand.js (ATMOSPHERE.page). Content sits on opaque surfaces above
+     it, so the color exists around the content, not under the text. */
+  background-image: var(--brand-atmosphere);
+  background-repeat: no-repeat;
+}
+/* Pinned to the viewport on larger screens. On phones it scrolls with the
+   document (mobile browsers handle fixed backgrounds inconsistently). */
+@media (min-width: 900px) {
+  html {
+    background-attachment: fixed;
+  }
 }
 /* Background AND text color are pinned here, keyed off the tokens above —
    not left to whichever of MUI's two (light-theme SSR, dark-theme client)
@@ -40,7 +53,9 @@ html {
    land after in the cascade. These two declarations are the only ones in
    the app that override that. */
 html[data-theme-mode] body {
-  background-color: var(--brand-background) !important;
+  /* Transparent, so the <html> background (color + atmosphere) shows
+     through; the color itself is still --brand-background. */
+  background-color: transparent !important;
   color: var(--brand-text) !important;
 }
 
@@ -160,4 +175,72 @@ html[data-theme-mode] body {
    wobble. Reserved for real validation/failure feedback only. */
 .tf-shake {
   animation: tf-shake 220ms ease-in-out;
+}
+
+/* ---------------------------------------------------------------------
+   Brand surface utilities. Everything here reads the --brand-* gradient
+   and atmosphere variables from lib/brand.js; no colors are defined in
+   this file.
+   --------------------------------------------------------------------- */
+
+/* Hairline brand-gradient ring on a featured surface. Drawn with a masked
+   pseudo-element so the surface's own background and radius are untouched.
+   The host needs position: relative (set here) and its own border-radius. */
+.tf-ring {
+  position: relative;
+}
+.tf-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--brand-gradient-border);
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box exclude, linear-gradient(black 0 0);
+  pointer-events: none;
+}
+
+/* A 2px brand-gradient line along the top edge of a panel. */
+.tf-topline {
+  position: relative;
+}
+.tf-topline::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  border-radius: inherit;
+  background: var(--brand-gradient);
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+/* Landing hero: two large, soft color fields behind the board preview. */
+.tf-hero-glow {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+}
+.tf-hero-glow::before,
+.tf-hero-glow::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+}
+.tf-hero-glow::before {
+  width: 70%;
+  aspect-ratio: 1;
+  left: -5%;
+  top: -10%;
+  background: var(--brand-atmosphere-hero-a);
+}
+.tf-hero-glow::after {
+  width: 60%;
+  aspect-ratio: 1;
+  right: -5%;
+  bottom: -12%;
+  background: var(--brand-atmosphere-hero-b);
 }

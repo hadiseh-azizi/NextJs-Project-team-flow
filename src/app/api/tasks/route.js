@@ -151,7 +151,7 @@ export async function POST(req) {
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to add tasks to this project. Submit a change request instead." },
+      { error: "You don't have permission to add tasks to this project." },
       { status: 403 }
     );
   }

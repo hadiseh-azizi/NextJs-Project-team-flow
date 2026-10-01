@@ -80,17 +80,31 @@ export default async function DashboardPage() {
           }
         />
       ) : (
-        <Grid container columnSpacing={{ md: 8 }} rowSpacing={{ xs: 5, md: 0 }}>
+        <Grid container columnSpacing={{ md: 4 }} rowSpacing={{ xs: 3, md: 0 }}>
           {/* Each stat is a switch — choosing one lists what is behind it
               underneath (my open tasks / completed tasks / projects). */}
           <Grid item xs={12} md={7} className="tf-fade-up">
             <OverviewStats projects={serialized} userId={userId} />
           </Grid>
           <Grid item xs={12} md={5} className="tf-fade-up" sx={{ animationDelay: "60ms" }}>
-            <Typography variant="h6" component="h2" sx={{ mb: 1.5 }}>
-              Project progress
-            </Typography>
-            <ProgressChart projects={serialized} />
+            <Box
+              className="tf-topline"
+              sx={{
+                bgcolor: "background.paper",
+                backgroundImage: "var(--brand-panel-wash)",
+                border: "1px solid",
+                borderColor: "divider",
+                borderRadius: 1,
+                boxShadow: "var(--brand-shadow-card)",
+                overflow: "hidden",
+                p: { xs: 2, sm: 3 },
+              }}
+            >
+              <Typography variant="h6" component="h2" sx={{ mb: 1.5 }}>
+                Project progress
+              </Typography>
+              <ProgressChart projects={serialized} />
+            </Box>
           </Grid>
         </Grid>
       )}

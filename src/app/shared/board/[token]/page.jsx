@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { Box, Container, Typography, LinearProgress, Alert, Button, Skeleton, Chip } from "@mui/material";
+import { Box, Container, Typography, Alert, Button, Skeleton, Chip } from "@mui/material";
 import WifiOffIcon from "@mui/icons-material/WifiOff";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import TeamFlowBrand from "@/components/TeamFlowBrand";
+import GradientProgress from "@/components/GradientProgress";
 import SharedBoardView from "@/components/SharedBoardView";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { cacheBoardSnapshot, readCachedBoard, clearCachedBoard } from "@/lib/sharedBoardCache";
@@ -127,10 +128,10 @@ export default function SharedBoardPage() {
   }, [token]);
 
   return (
-    <Box sx={{ minHeight: "100dvh", bgcolor: "background.default" }}>
-      <Box sx={{ borderBottom: "1px solid", borderColor: "divider", py: 1.5 }}>
+    <Box sx={{ minHeight: "100dvh" }}>
+      <Box sx={{ borderBottom: "1px solid", borderColor: "divider", bgcolor: "background.paper", backgroundImage: "var(--brand-panel-wash)", py: 1.5 }}>
         <Container maxWidth="lg" sx={{ display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}>
-          <TeamFlowBrand href="/" />
+          <TeamFlowBrand href="/" collapseOnNarrow />
           <Chip
             size="small"
             variant="outlined"
@@ -178,13 +179,7 @@ export default function SharedBoardPage() {
 
             <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 3, rowGap: 1, mt: 2, mb: 3 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                <LinearProgress
-                  variant="determinate"
-                  value={board.progress.pct}
-                  color={board.progress.pct === 100 ? "success" : "primary"}
-                  aria-label="Project progress"
-                  sx={{ width: 140 }}
-                />
+                <GradientProgress value={board.progress.pct} done={board.progress.pct === 100} label="Project progress" width={140} />
                 <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
                   {board.progress.done} of {board.progress.total} tasks done
                 </Typography>

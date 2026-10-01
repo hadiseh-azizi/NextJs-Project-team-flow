@@ -153,24 +153,3 @@ export function toSharedBoardDTO(project, columns, tasks) {
     tasks: tasks.map(toSharedTaskDTO),
   };
 }
-
-// `task`/`column` are the populated (name/title only) target, or `null`
-// when the request doesn't have one (see models/ChangeRequest.js) or the
-// target has since been deleted — the frontend shows "(deleted)" for the
-// latter rather than a broken reference.
-export function toChangeRequestDTO(cr) {
-  return {
-    id: idStr(cr._id),
-    projectId: idStr(cr.project),
-    requester: toUserDTO(cr.requester),
-    actionType: cr.actionType,
-    targetTask: cr.targetTask ? { id: idStr(cr.targetTask._id), title: cr.targetTask.title } : null,
-    targetColumn: cr.targetColumn ? { id: idStr(cr.targetColumn._id), name: cr.targetColumn.name } : null,
-    description: cr.description,
-    status: cr.status,
-    createdAt: new Date(cr.createdAt).toISOString(),
-    respondedAt: cr.respondedAt ? new Date(cr.respondedAt).toISOString() : null,
-    respondedBy: cr.respondedBy ? toUserDTO(cr.respondedBy) : null,
-    applyError: cr.applyError ?? null,
-  };
-}

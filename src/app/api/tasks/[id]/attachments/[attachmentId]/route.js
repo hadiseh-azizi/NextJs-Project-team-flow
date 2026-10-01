@@ -72,7 +72,7 @@ export async function DELETE(req, { params }) {
   const { task, project } = access;
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to delete attachments from this task. Submit a change request instead." },
+      { error: "You don't have permission to delete attachments from this task." },
       { status: 403 }
     );
   }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
+import { accentGradient } from "@/lib/brand";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 
 // One header for every page in the dashboard: an optional way back, the
@@ -43,7 +44,7 @@ export default function PageHeader({ title, description, back, actions, accent, 
             {accent && (
               <Box
                 aria-hidden
-                sx={{ width: 11, height: 11, borderRadius: "50%", flexShrink: 0, bgcolor: accent, boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.18)}` }}
+                sx={{ width: 11, height: 11, borderRadius: "50%", flexShrink: 0, background: (theme) => accentGradient(accent, theme.palette.mode), boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.18)}` }}
               />
             )}
             {title}

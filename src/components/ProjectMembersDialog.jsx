@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography, Avatar, Alert, CircularProgress,
-  Divider, RadioGroup, FormControlLabel, Radio,
+  Divider, RadioGroup, FormControlLabel, Radio, Switch,
 } from "@mui/material";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
@@ -21,10 +21,12 @@ import { apiFetch, errorMessage } from "@/lib/apiFetch";
 // everyone who already had access so nobody but the person just removed
 // loses anything.
 //
-// Below that, a second, independent section covers who can *edit* rather
-// than just view — see lib/authz.js's canEditProject. The two lists
-// overlap (an editor must already have access) but aren't the same thing,
-// which is why they're two separate controls rather than one.
+// Below that, a second, independent section ("Project edit access")
+// covers who can *edit* rather than just view — see lib/authz.js's
+// canEditProject. The manager picks "everyone" or "only selected
+// members", and in the latter case switches each eligible member on or
+// off. The two lists overlap (an editor must already have access) but
+// aren't the same thing, which is why they're two separate controls.
 export default function ProjectMembersDialog({
   open, onClose, projectId, manager, teamMembers, projectMembers, editingMode, editors, onChanged,
 }) {
@@ -41,6 +43,10 @@ export default function ProjectMembersDialog({
   const others = teamMembers.filter((m) => m.id !== manager.id);
   const editorIds = new Set((editors || []).map((e) => e.id));
   const isManagerApproval = editingMode === "manager_approval";
+  // Only team members who can already open the project are eligible for
+  // edit access (the editors route enforces the same rule server-side).
+  const eligible = others.filter((m) => (isRestricted ? memberIds.has(m.id) : true));
+  const [editorNotice, setEditorNotice] = useState("");
 
   async function toggleAccess(member, hasAccess) {
     if (pendingId) return;
@@ -85,6 +91,7 @@ export default function ProjectMembersDialog({
     if (editorPendingId) return;
     setEditorPendingId(member.id);
     setEditorError("");
+    setEditorNotice("");
     try {
       const data = canEdit
         ? await apiFetch(`/api/projects/${projectId}/editors?userId=${member.id}`, { method: "DELETE" })
@@ -94,6 +101,7 @@ export default function ProjectMembersDialog({
             body: JSON.stringify({ userId: member.id }),
           });
       onChanged(data);
+      setEditorNotice(canEdit ? `${member.name} can no longer edit this project.` : `${member.name} can now edit this project.`);
     } catch (err) {
       setEditorError(errorMessage(err, "Couldn't update this member's editing permission. Please try again."));
     } finally {
@@ -105,7 +113,7 @@ export default function ProjectMembersDialog({
   const listSx = { listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle>Project access</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -167,13 +175,13 @@ export default function ProjectMembersDialog({
 
         <Divider sx={{ mt: 3, mb: 2.5 }} />
 
-        <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
-          Editing permission
+        <Typography variant="subtitle2" component="h3" sx={{ mb: 0.5 }}>
+          Project edit access
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          Controls who can directly edit tasks and columns in this project. This is separate from who can view it, above.
+          Decides who can change tasks and columns. Everyone with access can always view the project.
         </Typography>
-        <RadioGroup value={editingMode} onChange={handleModeChange}>
+        <RadioGroup value={editingMode} onChange={handleModeChange} aria-label="Who can edit this project">
           <FormControlLabel
             value="everyone"
             disabled={modeSaving}
@@ -184,7 +192,7 @@ export default function ProjectMembersDialog({
             value="manager_approval"
             disabled={modeSaving}
             control={<Radio size="small" />}
-            label={<Typography variant="body2">Manager approval required</Typography>}
+            label={<Typography variant="body2">Only members I select can edit</Typography>}
           />
         </RadioGroup>
         {modeError && (
@@ -193,54 +201,74 @@ export default function ProjectMembersDialog({
           </Alert>
         )}
 
-        {isManagerApproval && (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Everyone else can still view the project and submit change requests.
-            </Typography>
-            <Box component="ul" sx={listSx}>
-              <Box component="li" sx={rowSx}>
-                <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(manager.id, mode) }}>
-                  {avatarInitial(manager.name)}
-                </Avatar>
-                <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500, overflowWrap: "anywhere" }}>
-                  {manager.name}
+        <Box component="ul" sx={{ ...listSx, mt: 2 }} aria-label="Edit access by member">
+          <Box component="li" sx={rowSx}>
+            <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(manager.id, mode) }}>
+              {avatarInitial(manager.name)}
+            </Avatar>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography variant="body2" sx={{ fontWeight: 500, overflowWrap: "anywhere" }}>{manager.name}</Typography>
+              {manager.email && (
+                <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                  {manager.email}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Can always edit
-                </Typography>
-              </Box>
-              {others
-                .filter((m) => (isRestricted ? memberIds.has(m.id) : true))
-                .map((m) => {
-                  const canEdit = editorIds.has(m.id);
-                  return (
-                    <Box component="li" key={m.id} sx={rowSx}>
-                      <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode) }}>
-                        {avatarInitial(m.name)}
-                      </Avatar>
-                      <Typography variant="body2" sx={{ flex: 1, minWidth: 0, fontWeight: 500, overflowWrap: "anywhere" }}>
-                        {m.name}
-                      </Typography>
-                      <Button
-                        size="small"
-                        color={canEdit ? "error" : "primary"}
-                        aria-label={canEdit ? `Remove ${m.name}'s editing permission` : `Grant ${m.name} editing permission`}
-                        disabled={!!editorPendingId}
-                        onClick={() => toggleEditor(m, canEdit)}
-                      >
-                        {editorPendingId === m.id ? <CircularProgress size={14} aria-label="Saving…" /> : canEdit ? "Revoke" : "Grant"}
-                      </Button>
-                    </Box>
-                  );
-                })}
+              )}
             </Box>
-            {editorError && (
-              <Alert severity="error" className="tf-shake" sx={{ mt: 1.5 }}>
-                {editorError}
-              </Alert>
-            )}
+            <Typography variant="caption" color="text.secondary">Always can edit</Typography>
           </Box>
+          {eligible.map((m) => {
+            const canEdit = isManagerApproval ? editorIds.has(m.id) : true;
+            const saving = editorPendingId === m.id;
+            return (
+              <Box component="li" key={m.id} sx={rowSx}>
+                <Avatar sx={{ width: 28, height: 28, fontSize: 12, bgcolor: pastelForString(m.id, mode) }}>
+                  {avatarInitial(m.name)}
+                </Avatar>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 500, overflowWrap: "anywhere" }}>{m.name}</Typography>
+                  {m.email && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: "block", overflowWrap: "anywhere" }}>
+                      {m.email}
+                    </Typography>
+                  )}
+                </Box>
+                <Typography variant="caption" color={canEdit ? "text.primary" : "text.secondary"} sx={{ whiteSpace: "nowrap" }}>
+                  {canEdit ? "Can edit" : "View only"}
+                </Typography>
+                {saving ? (
+                  <CircularProgress size={18} aria-label="Saving…" sx={{ mx: 1.25 }} />
+                ) : (
+                  <Switch
+                    size="small"
+                    checked={canEdit}
+                    disabled={!isManagerApproval || !!editorPendingId}
+                    onChange={() => toggleEditor(m, canEdit)}
+                    inputProps={{ "aria-label": `Edit access for ${m.name}` }}
+                  />
+                )}
+              </Box>
+            );
+          })}
+          {eligible.length === 0 && (
+            <Box component="li" sx={{ py: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                No other team members have access to this project yet.
+              </Typography>
+            </Box>
+          )}
+        </Box>
+        {!isManagerApproval && eligible.length > 0 && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 1 }}>
+            Switches are locked while everyone can edit. Choose “Only members I select can edit” to set them individually.
+          </Typography>
+        )}
+        <Box role="status" aria-live="polite" sx={{ mt: 1.5, minHeight: 0 }}>
+          {editorNotice && <Alert severity="success" sx={{ py: 0 }}>{editorNotice}</Alert>}
+        </Box>
+        {editorError && (
+          <Alert severity="error" className="tf-shake" sx={{ mt: 1.5 }}>
+            {editorError}
+          </Alert>
         )}
       </DialogContent>
       <DialogActions>

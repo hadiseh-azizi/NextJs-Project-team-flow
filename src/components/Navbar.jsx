@@ -75,8 +75,11 @@ export default function Navbar({ userName }) {
                   fontWeight: active ? 600 : 500,
                   color: active ? "text.primary" : "text.secondary",
                   textDecoration: "none",
-                  transition: "color .12s ease",
-                  "&:hover": { color: "text.primary" },
+                  transition: "color .12s ease, background-color .12s ease",
+                  // Only the current page is tinted: a faint brand wash that
+                  // fades out downward into the gradient indicator below.
+                  backgroundImage: active ? "linear-gradient(180deg, transparent 25%, var(--brand-gradient-subtle))" : "none",
+                  "&:hover": { color: "text.primary", backgroundColor: active ? "transparent" : "action.hover" },
                   "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2, borderRadius: 0.5 },
                   "&::after": {
                     content: '""',
@@ -85,7 +88,8 @@ export default function Navbar({ userName }) {
                     right: { xs: 8, sm: 12 },
                     bottom: -1,
                     height: 2,
-                    bgcolor: "primary.main",
+                    borderRadius: "2px 2px 0 0",
+                    background: "var(--brand-gradient)",
                     opacity: active ? 1 : 0,
                     transition: "opacity .12s ease",
                   },

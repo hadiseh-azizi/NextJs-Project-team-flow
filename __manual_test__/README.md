@@ -49,6 +49,8 @@ node __manual_test__/35-column-reorder.test.cjs
 node __manual_test__/36-collapsible-columns.test.cjs
 node __manual_test__/37-brand-integration.test.cjs
 node __manual_test__/38-brand-color-system.test.cjs
+node __manual_test__/39-brand-gradient-system.test.cjs
+node __manual_test__/40-team-initial-and-project-tab.test.cjs
 ```
 
 (`24-task-creation-attachments.test.cjs` exists in the suite but was
@@ -168,7 +170,8 @@ seed-then-mutate behavior, the `POST`/`DELETE
 `GET /api/projects` end to end through the real (unmocked) authz.js.
 
 `27-project-editing-permission.test.cjs` (Project-Level Editing
-Permission + Change Request system) covers `canEditProject()` /
+Permission; the change-request flow was later removed in favor of
+manager-controlled edit access) covers `canEditProject()` /
 `isManagerApprovalMode()` (the second, narrower gate on top of
 `projectAccessFor()`'s view-access one above) and
 `applyProjectEditPermission()`; the new `POST`/`DELETE

@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { CardActionArea, Box, Typography, LinearProgress } from "@mui/material";
+import { CardActionArea, Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { useThemeMode } from "@/components/ThemeModeContext";
-import { teamColorForId, projectColorForId } from "@/lib/entityColor";
+import GradientProgress from "@/components/GradientProgress";
+import { projectColorForId, projectTabForId } from "@/lib/entityColor";
 import { projectProgress } from "@/lib/taskCompletion";
 import { avatarInitial } from "@/lib/avatarInitial";
 import { staggerDelay } from "@/lib/staggerDelay";
 
 // Height of the team tab. It is drawn 1px taller than the space reserved
 // for it above the card, so its bottom row sits on top of the card's top
-// border and the two read as one outline.
-const TAB_HEIGHT = 26;
+// border and the tab reads as attached to the card, not floating above it.
+const TAB_HEIGHT = 30;
 const CARD_RADIUS = 8;
 
 const VISUALLY_HIDDEN = {
@@ -43,7 +44,8 @@ export default function ProjectCard({ project, index = 0 }) {
   const dark = mode === "dark";
   const { total, done, pct } = projectProgress(project.tasks);
   const projectAccent = projectColorForId(project.id, mode).strong;
-  const teamAccent = teamColorForId(project.team.id, mode);
+  const tab = projectTabForId(project.id, mode);
+  const tabGradient = (stops) => `linear-gradient(120deg, ${stops[0]}, ${stops[1]})`;
 
   return (
     <Box className="tf-settle-in" sx={{ animationDelay: `${staggerDelay(index, 35)}ms` }}>
@@ -53,7 +55,6 @@ export default function ProjectCard({ project, index = 0 }) {
         focusRipple={false}
         sx={(theme) => {
           const edge = theme.palette.line.main;
-          const edgeHover = theme.palette.line.strong;
           const ring = theme.palette.primary.main;
           return {
             display: "block",
@@ -79,13 +80,28 @@ export default function ProjectCard({ project, index = 0 }) {
               alignItems: "center",
               px: "12px",
               pt: "2px",
-              bgcolor: theme.palette.background.paper,
+              backgroundImage: tabGradient(tab.rest),
+              color: tab.ink,
               border: "1px solid",
-              borderColor: edge,
+              borderColor: tab.edge,
               borderBottom: "none",
               borderRadius: `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0`,
-              boxShadow: `inset 0 2px 0 ${teamAccent}, 0 -1px 2px ${alpha(dark ? theme.palette.surface.sunken : theme.palette.text.primary, dark ? 0.6 : 0.06)}`,
+              boxShadow: `0 -1px 3px ${alpha(dark ? theme.palette.surface.sunken : theme.palette.text.primary, dark ? 0.6 : 0.08)}`,
               transition: "border-color .15s ease",
+              // Hover: a slightly stronger version of the same gradient fades
+              // in over the resting one (a gradient cannot be transitioned
+              // directly). Text sits above it.
+              "&::before": {
+                content: '""',
+                position: "absolute",
+                inset: 0,
+                borderRadius: "inherit",
+                backgroundImage: tabGradient(tab.hover),
+                opacity: 0,
+                transition: "opacity .18s ease",
+                pointerEvents: "none",
+              },
+              "& > .MuiTypography-root": { position: "relative" },
             },
             "& .tf-project-body": {
               position: "relative",
@@ -98,6 +114,9 @@ export default function ProjectCard({ project, index = 0 }) {
               textAlign: "left",
               p: "18px",
               bgcolor: theme.palette.background.paper,
+              // A faint corner wash in the project's own color, fading out
+              // well before the text; the surface underneath stays opaque.
+              backgroundImage: `radial-gradient(120% 70% at 0% 0%, ${alpha(projectAccent, dark ? 0.16 : 0.09)}, transparent 60%)`,
               border: "1px solid",
               borderColor: edge,
               // Top-left corner stays square: that is where the tab joins.
@@ -107,8 +126,9 @@ export default function ProjectCard({ project, index = 0 }) {
             },
 
             "&:hover .tf-project-frame": { transform: "translateY(-2px)" },
-            "&:hover .tf-project-tab, &:hover .tf-project-body": { borderColor: edgeHover },
-            "&:hover .tf-project-body": { boxShadow: theme.tf.shadow.raised },
+            "&:hover .tf-project-tab::before": { opacity: 1 },
+            "&:hover .tf-project-body": { borderColor: "var(--brand-border-hover)" },
+            "&:hover .tf-project-body": { boxShadow: `${theme.tf.shadow.raised}, 0 8px 24px ${alpha(projectAccent, dark ? 0.18 : 0.12)}` },
 
             // Keyboard focus: the same 1px border turns accent-colored and
             // gains one more pixel outside, on the tab and the card alike, so
@@ -116,7 +136,7 @@ export default function ProjectCard({ project, index = 0 }) {
             "&.Mui-focusVisible .tf-project-body": { borderColor: ring, boxShadow: `0 0 0 1px ${ring}` },
             "&.Mui-focusVisible .tf-project-tab": {
               borderColor: ring,
-              boxShadow: `inset 0 2px 0 ${teamAccent}, -1px -1px 0 0 ${ring}, 1px -1px 0 0 ${ring}`,
+              boxShadow: `-1px -1px 0 0 ${ring}, 1px -1px 0 0 ${ring}`,
             },
 
             "@media (prefers-reduced-motion: reduce)": { "&:hover .tf-project-frame": { transform: "none" } },
@@ -128,32 +148,12 @@ export default function ProjectCard({ project, index = 0 }) {
             <Box component="span" sx={VISUALLY_HIDDEN}>
               Team:{" "}
             </Box>
-            <Typography component="span" noWrap sx={{ fontSize: "0.75rem", fontWeight: 600, lineHeight: 1.2 }}>
+            <Typography component="span" noWrap sx={{ fontSize: "0.8rem", fontWeight: 600, lineHeight: 1.2, color: "inherit" }}>
               {project.team.name}
             </Typography>
           </Box>
 
           <Box className="tf-project-body">
-            <Box
-              aria-hidden
-              sx={{
-                width: 26,
-                height: 26,
-                borderRadius: "4px",
-                display: "grid",
-                placeItems: "center",
-                flexShrink: 0,
-                bgcolor: alpha(projectAccent, dark ? 0.24 : 0.14),
-                border: "1px solid",
-                borderColor: alpha(projectAccent, dark ? 0.7 : 0.6),
-                color: "text.primary",
-                fontSize: "0.8125rem",
-                fontWeight: 700,
-                lineHeight: 1,
-              }}
-            >
-              {avatarInitial(project.name)}
-            </Box>
 
             <Typography
               variant="subtitle1"
@@ -197,13 +197,7 @@ export default function ProjectCard({ project, index = 0 }) {
                   {pct}%
                 </Typography>
               </Box>
-              <LinearProgress
-                variant="determinate"
-                value={pct}
-                color={pct === 100 ? "success" : "primary"}
-                aria-label={`${project.name} progress`}
-                sx={pct === 100 ? undefined : { "& .MuiLinearProgress-bar": { backgroundColor: projectAccent } }}
-              />
+              <GradientProgress value={pct} accent={projectAccent} done={pct === 100} label={`${project.name} progress`} />
               <Typography variant="caption" color="text.secondary" sx={{ display: "block", mt: 0.75, fontVariantNumeric: "tabular-nums" }}>
                 {total === 0 ? "No tasks yet" : `${done} of ${total} done`}
               </Typography>

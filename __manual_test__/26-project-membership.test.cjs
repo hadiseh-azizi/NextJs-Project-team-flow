@@ -148,7 +148,7 @@ function team() {
 
     assert.strictEqual(calls.length, 2);
     assert.deepStrictEqual(calls[0].update.$set.members.sort(), [MANAGER_ID, MEMBER_ID, OTHER_MEMBER_ID].sort());
-    assert.deepStrictEqual(calls[1].update, { $pull: { members: OTHER_MEMBER_ID } });
+    assert.deepStrictEqual(calls[1].update, { $pull: { members: OTHER_MEMBER_ID, editors: OTHER_MEMBER_ID } });
   });
 
   await test("an already-restricted project skips the seed and only issues the add/remove", async () => {

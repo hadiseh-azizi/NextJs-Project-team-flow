@@ -177,7 +177,22 @@ export default function TeamDetailPage() {
   }
 
   const rowSx = { display: "flex", alignItems: "center", gap: 1.5, py: 1.25, borderBottom: "1px solid", borderColor: "divider", minHeight: 52 };
-  const listSx = { listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider" };
+  const listSx = { listStyle: "none", m: 0, p: 0, borderTop: "1px solid", borderColor: "divider", "& > li:last-of-type": { borderBottom: "none" } };
+  // Member and invitation lists each sit on a panel: opaque surface, brand
+  // wash at the top edge, gradient hairline.
+  const panelSx = {
+    bgcolor: "background.paper",
+    backgroundImage: "var(--brand-panel-wash)",
+    border: "1px solid",
+    borderColor: "divider",
+    borderRadius: 1,
+    boxShadow: "var(--brand-shadow-card)",
+    overflow: "hidden",
+    px: { xs: 2, sm: 3 },
+    pt: { xs: 2.5, sm: 3 },
+    pb: 1,
+    maxWidth: 520,
+  };
   const hasInvites = isManager && team.pendingInvitations?.length > 0;
 
   return (
@@ -229,7 +244,7 @@ export default function TeamDetailPage() {
         </Alert>
       )}
 
-      <Box component="section" aria-labelledby="team-members-heading" sx={{ maxWidth: 520, mb: hasInvites ? 5 : 0 }}>
+      <Box component="section" aria-labelledby="team-members-heading" className="tf-topline" sx={{ ...panelSx, mb: hasInvites ? 3 : 0 }}>
         <Typography id="team-members-heading" variant="h6" component="h2" sx={{ mb: 1 }}>
           Team members
         </Typography>
@@ -264,7 +279,7 @@ export default function TeamDetailPage() {
       </Box>
 
       {hasInvites && (
-        <Box component="section" aria-labelledby="team-invites-heading" sx={{ maxWidth: 520 }}>
+        <Box component="section" aria-labelledby="team-invites-heading" className="tf-topline" sx={panelSx}>
           <Typography id="team-invites-heading" variant="h6" component="h2">
             Pending invitations
           </Typography>

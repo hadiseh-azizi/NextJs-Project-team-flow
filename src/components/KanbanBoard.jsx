@@ -17,7 +17,6 @@ import TaskDetailDialog from "@/components/TaskDetailDialog";
 import NewTaskModal from "@/components/NewTaskModal";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import ChoiceDialog from "@/components/ChoiceDialog";
-import RequestChangeDialog from "@/components/RequestChangeDialog";
 import EmptyState from "@/components/EmptyState";
 import FadeInStagger from "@/components/FadeInStagger";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
@@ -59,11 +58,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   const [confirmDeleteColumn, setConfirmDeleteColumn] = useState(null);
   const [deleteColumnError, setDeleteColumnError] = useState("");
   const [deleting, setDeleting] = useState(false);
-  // The task a "Request change" dialog is currently open for (see
-  // RequestChangeDialog) — set either from a task card's checkbox (via
-  // handleToggleComplete, below) or from the task detail dialog's own
-  // "Request change" button, when `canEdit` is false.
-  const [requestChangeTask, setRequestChangeTask] = useState(null);
   // Tasks with a move request currently in flight — a card can only be
   // dropped again once its previous move has resolved, so two overlapping
   // PATCHes for the same task (and the ordering confusion that would
@@ -430,10 +424,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   // a task completed (per the product requirement); reversing that is a
   // plain, immediate toggle, same bar as any other field edit in this app.
   async function handleToggleComplete(task) {
-    if (!canEdit) {
-      setRequestChangeTask(task);
-      return;
-    }
+    if (!canEdit) return;
     if (task.completed) {
       try {
         await apiFetch(`/api/tasks/${task.id}`, {
@@ -601,7 +592,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           description={
             canEdit
               ? "This project doesn't have a board. Add one to start organizing its work into columns."
-              : "This project doesn't have a board yet. Ask the project manager to add one, or use \"Request a change\" above."
+              : "This project doesn't have a board yet. Ask the project manager to add one."
           }
           action={
             canEdit ? (
@@ -697,7 +688,9 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                 overflow: "hidden",
                 minHeight: 160,
                 borderRadius: 2,
-                bgcolor: isOver ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.08) : theme.palette.surface.sunken,
+                bgcolor: isOver ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.12 : 0.08) : "var(--brand-surface-tint)",
+                border: "1px solid",
+                borderColor: isOver ? "transparent" : theme.palette.divider,
                 boxShadow: isOver ? `inset 0 0 0 1.5px ${theme.palette.primary.main}` : "none",
                 transition: "background-color .12s ease, box-shadow .12s ease",
                 willChange: "auto",
@@ -929,7 +922,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
             <Box
               component="form"
               onSubmit={handleAddColumn}
-              sx={(theme) => ({ p: 1, borderRadius: 2, bgcolor: theme.palette.surface.sunken })}
+              sx={{ p: 1, borderRadius: 2, bgcolor: "var(--brand-surface-tint)", border: "1px solid", borderColor: "divider" }}
             >
               <TextField
                 autoFocus
@@ -1017,7 +1010,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           onClose={() => setOpenTaskId(null)}
           onChanged={onChanged}
           onToggleComplete={handleToggleComplete}
-          onRequestChange={(t) => setRequestChangeTask(t)}
           onDeleted={() => {
             setOpenTaskId(null);
             onChanged();
@@ -1110,17 +1102,6 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         loading={noDoneColumnBusy}
         error={noDoneColumnError}
       />
-
-      {requestChangeTask && (
-        <RequestChangeDialog
-          open={!!requestChangeTask}
-          onClose={() => setRequestChangeTask(null)}
-          projectId={projectId}
-          task={requestChangeTask}
-          columns={sortedColumns}
-          onSubmitted={() => setNotice("Your request was sent to the project manager.")}
-        />
-      )}
 
       <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError("")}>
         <Alert severity="error" onClose={() => setError("")}>

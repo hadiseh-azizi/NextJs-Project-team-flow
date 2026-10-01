@@ -6,6 +6,7 @@ import { alpha } from "@mui/material/styles";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
 import { teamColorForId } from "@/lib/entityColor";
+import TeamName from "@/components/TeamName";
 import { avatarInitial } from "@/lib/avatarInitial";
 import { staggerDelay } from "@/lib/staggerDelay";
 
@@ -13,13 +14,14 @@ import { staggerDelay } from "@/lib/staggerDelay";
 // ProjectCard) so the two lists are never confused with each other.
 //
 // Everything is sized in container-query units (cqw = 1% of the circle's
-// own width), so the type, spacing and monogram scale with the circle and
+// own width), so the type and spacing scale with the circle and
 // the same layout holds from a ~150px circle on a phone to a ~270px one on
 // a wide screen. Content sits in a column ~64% of the diameter wide, which
 // is what keeps text inside the curve at the top and bottom of the stack.
 //
-// The team's identity color appears in three quiet places: the monogram,
-// a thin inner ring, and the hover shadow. The outer edge stays neutral.
+// The name leads the card; its first letter is set larger and painted in the
+// team's identity color (see TeamName). The same color shows in a thin inner
+// ring and the hover shadow. The outer edge stays neutral.
 //
 // `index` only feeds the entrance stagger.
 export default function TeamCard({ team, index = 0 }) {
@@ -46,6 +48,9 @@ export default function TeamCard({ team, index = 0 }) {
           overflow: "visible",
           containerType: "inline-size",
           boxShadow: theme.tf.shadow.card,
+          // The circle's surface: opaque paper with a soft team-colored
+          // glow rising from the lower edge, like light inside the ring.
+          backgroundImage: `radial-gradient(90% 70% at 50% 110%, ${alpha(accent, dark ? 0.2 : 0.11)}, transparent 70%)`,
           transition: "box-shadow .18s ease, border-color .15s ease, transform .18s ease",
           // The inner ring: same center, inset from the edge, in the team color.
           "&::before": {
@@ -53,14 +58,14 @@ export default function TeamCard({ team, index = 0 }) {
             position: "absolute",
             inset: "3.5cqw",
             borderRadius: "50%",
-            border: "1px solid",
+            border: "4px solid",
             borderColor: alpha(accent, dark ? 0.5 : 0.42),
             pointerEvents: "none",
-            transition: "border-color .15s ease",
+            transition: "border-color .15s ease, box-shadow .15s ease",
           },
           "&:hover": {
-            borderColor: theme.palette.line.strong,
-            boxShadow: `0 6px 18px ${alpha(accent, dark ? 0.3 : 0.18)}`,
+            borderColor: "var(--brand-border-hover)",
+            boxShadow: `0 8px 26px ${alpha(accent, dark ? 0.32 : 0.2)}, 0 0 0 1px ${alpha(accent, dark ? 0.25 : 0.15)}`,
             transform: "scale(1.02)",
             "&::before": { borderColor: accent },
           },
@@ -84,38 +89,15 @@ export default function TeamCard({ team, index = 0 }) {
             "&.Mui-focusVisible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 4 },
           }}
         >
-          <Box
-            aria-hidden
-            sx={{
-              width: "clamp(32px, 15cqw, 44px)",
-              height: "clamp(32px, 15cqw, 44px)",
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
-              bgcolor: alpha(accent, dark ? 0.22 : 0.12),
-              border: "1px solid",
-              borderColor: alpha(accent, dark ? 0.6 : 0.5),
-              color: "text.primary",
-              fontFamily: "'Fraunces', Georgia, serif",
-              fontWeight: 600,
-              fontSize: "clamp(0.9rem, 6.5cqw, 1.2rem)",
-              lineHeight: 1,
-            }}
-          >
-            {avatarInitial(team.name)}
-          </Box>
-
           <Typography
             variant="subtitle1"
             component="h2"
             sx={{
-              mt: "3cqw",
               width: "100%",
               fontFamily: "'Fraunces', Georgia, serif",
               fontWeight: 500,
-              fontSize: "clamp(0.875rem, 8cqw, 1.375rem)",
-              lineHeight: 1.2,
+              fontSize: "clamp(0.9375rem, 8.5cqw, 1.5rem)",
+              lineHeight: 3.7,
               letterSpacing: "-0.01em",
               overflowWrap: "anywhere",
               display: "-webkit-box",
@@ -124,7 +106,7 @@ export default function TeamCard({ team, index = 0 }) {
               overflow: "hidden",
             }}
           >
-            {team.name}
+            <TeamName name={team.name} accent={accent} mode={mode} scale={1.5} />
           </Typography>
 
           <Typography

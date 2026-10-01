@@ -7,7 +7,7 @@ import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toProjectDTO } from "@/lib/serialize";
 import { isValidObjectId } from "@/lib/objectId";
-import { applyProjectEditPermission, projectAccessFor } from "@/lib/authz";
+import { applyProjectEditPermission, isEligibleEditor } from "@/lib/authz";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateObjectIdField } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
@@ -55,11 +55,11 @@ async function respondWithUpdatedProject(id) {
 // while the project is in "manager_approval" mode (see
 // lib/authz.js's canEditProject), but storable regardless so a manager
 // can set editors up before switching the mode. Only the project manager
-// can do this, and only for someone who already has *view* access to the
-// project (projectAccessFor's isProjectMember) — granting edit rights to
-// someone who can't even open the project would be meaningless, and
-// would bypass the separate view-access boundary members/route.js
-// controls.
+// can do this, and only for someone who is on the project's team AND
+// already has *view* access to the project (isEligibleEditor) — granting
+// edit rights to an outsider, or to someone who can't even open the
+// project, must never be possible, and would bypass the separate
+// view-access boundary members/route.js controls.
 export async function POST(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -82,8 +82,8 @@ export async function POST(req, { params }) {
   if (targetUserId === String(project.manager?._id ?? project.manager)) {
     return NextResponse.json({ error: "The project manager can always edit" }, { status: 400 });
   }
-  if (!projectAccessFor(project, targetUserId).isProjectMember) {
-    return NextResponse.json({ error: "Only people who already have access to this project can be granted edit permission" }, { status: 400 });
+  if (!isEligibleEditor(project, targetUserId)) {
+    return NextResponse.json({ error: "Only members of this project's team who have access to the project can be granted edit access" }, { status: 400 });
   }
 
   return withMongoErrorHandling(async () => {

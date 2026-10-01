@@ -1,6 +1,6 @@
 import { createTheme, responsiveFontSizes, alpha } from "@mui/material/styles";
 import Grow from "@mui/material/Grow";
-import { BRAND, GREY, SHADOW } from "@/lib/brand";
+import { BRAND, GREY, SHADOW, GRADIENT, ATMOSPHERE } from "@/lib/brand";
 
 // Shared motion tokens — the same fast/normal/slow tiers used ad hoc as
 // ".12s" throughout this file's styleOverrides, named here for the few
@@ -8,10 +8,13 @@ import { BRAND, GREY, SHADOW } from "@/lib/brand";
 // duration than the instant hover/press feedback everything else uses.
 const MOTION = { fast: 120, normal: 200, slow: 280 };
 
-// Design direction: a cool, blue-tinted canvas with hairline borders and one
-// brand blue reserved for the primary action, focus, and the current
-// location in navigation. Violet and teal (the other two hues of the Team
-// Flow mark) are secondary accents only. Every color here comes from
+// Design direction: a cool, blue-tinted canvas with hairline borders, faint
+// washes of the mark's four colors behind the page (see ATMOSPHERE in
+// lib/brand.js), and one brand blue reserved for the primary action, focus,
+// and the current location in navigation. The brand gradient appears only
+// as thin accents (progress fills, the active nav indicator, top hairlines).
+// Violet and teal (the other two hues of the Team Flow mark) are secondary
+// accents. Every color here comes from
 // lib/brand.js — this file maps those tokens onto MUI, it does not define
 // colors of its own. Fraunces is used only where the product speaks in a
 // headline voice (page titles, dialog titles, the wordmark); everything you
@@ -47,6 +50,8 @@ function tokensFor(dark) {
     progressTrack: b.track,
     shadow: dark ? SHADOW.dark : SHADOW.light,
     grey: dark ? GREY.dark : GREY.light,
+    gradient: dark ? GRADIENT.dark : GRADIENT.light,
+    atmosphere: dark ? ATMOSPHERE.dark : ATMOSPHERE.light,
   };
 }
 
@@ -80,7 +85,7 @@ export function buildTheme(mode) {
       // Brand hues that are not MUI roles, read as theme.palette.brand.accent.
       brand: { accent: t.accent, secondary: t.secondary },
     },
-    tf: { shadow: t.shadow },
+    tf: { shadow: t.shadow, gradient: t.gradient, atmosphere: t.atmosphere },
     typography: {
       fontFamily: SANS,
       fontSize: 14,
@@ -130,11 +135,18 @@ export function buildTheme(mode) {
           sizeMedium: { height: 36, paddingInline: 14 },
           sizeSmall: { height: 30, paddingInline: 10, fontSize: "0.8125rem" },
           sizeLarge: { height: 42, paddingInline: 18, fontSize: "0.9375rem" },
+          // Solid color first (fallback, and what disabled/print use), the
+          // action gradient on top. The label color is onPrimary — the
+          // token brand.js defines; this used to read t.onAccent, which
+          // does not exist, so the label silently fell back to MUI's own
+          // contrast color instead of the brand's.
           containedPrimary: {
             backgroundColor: t.primary,
-            color: t.onAccent,
-            "&:hover": { backgroundColor: t.primaryHover },
-            "&:active": { backgroundColor: t.primaryActive },
+            backgroundImage: t.gradient.action,
+            color: t.onPrimary,
+            "&:hover": { backgroundColor: t.primaryHover, backgroundImage: t.gradient.actionHover },
+            "&:active": { backgroundColor: t.primaryActive, backgroundImage: "none" },
+            "&.Mui-disabled": { backgroundImage: "none" },
           },
           containedError: { "&:hover": { backgroundColor: t.errorHover } },
           outlinedPrimary: {
@@ -175,8 +187,10 @@ export function buildTheme(mode) {
           root: {
             boxShadow: "none",
             borderBottom: `1px solid ${t.line}`,
-            backgroundColor: t.canvas,
-            backgroundImage: "none",
+            // Opaque paper with a faint brand wash along its top edge; the
+            // page atmosphere behind it stays visible only below the bar.
+            backgroundColor: t.paper,
+            backgroundImage: `${t.atmosphere.panel}`,
             color: t.ink,
           },
         },
@@ -222,8 +236,23 @@ export function buildTheme(mode) {
           paper: {
             borderRadius: 8,
             backgroundColor: t.overlay,
+            backgroundImage: t.atmosphere.panel,
             boxShadow: t.shadow.overlay,
+            position: "relative",
+            // A 2px brand-gradient edge on top marks the overlay layer.
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              insetInline: 0,
+              top: 0,
+              height: 2,
+              background: t.gradient.brand,
+              opacity: dark ? 0.85 : 0.9,
+              pointerEvents: "none",
+              borderRadius: "8px 8px 0 0",
+            },
             "&.MuiDialog-paperFullScreen": { borderRadius: 0 },
+            "&.MuiDialog-paperFullScreen::before": { borderRadius: 0 },
           },
         },
       },

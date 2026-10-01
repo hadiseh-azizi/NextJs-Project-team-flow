@@ -37,6 +37,10 @@ function ReadOnlyTaskCard({ task }) {
         bgcolor: cardColor || "background.paper",
         borderColor: cardColor ? alpha(theme.palette.text.primary, 0.1) : "divider",
         boxShadow: theme.tf.shadow.card,
+        position: "relative",
+        "&::before": completed
+          ? { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--brand-gradient-strong)", borderRadius: "6px 0 0 6px", opacity: 0.85 }
+          : undefined,
       })}
     >
       <CardContent sx={{ p: "10px 12px !important" }}>
@@ -147,7 +151,9 @@ export default function SharedBoardView({ columns, tasks }) {
                 p: 1,
                 minHeight: 160,
                 borderRadius: 2,
-                bgcolor: theme.palette.surface.sunken,
+                bgcolor: "var(--brand-surface-tint)",
+                border: "1px solid",
+                borderColor: theme.palette.divider,
               })}
             >
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, pl: 1, pr: 0.25, minHeight: 32 }}>

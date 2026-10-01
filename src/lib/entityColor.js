@@ -1,4 +1,4 @@
-import { BRAND, mixHex } from "@/lib/brand";
+import { BRAND, mixHex, readableInk } from "@/lib/brand";
 
 // Deterministic "identity" colors for Projects and Teams — hash the id,
 // index into a fixed palette. Same id always maps to the same color;
@@ -78,4 +78,40 @@ export function projectColorForId(id, mode = "light") {
 export function teamColorForId(id, mode = "light") {
   const entry = TEAM_PALETTE[hashString(id) % TEAM_PALETTE.length];
   return entry.strong[mode === "dark" ? "dark" : "light"];
+}
+
+// The tinted, gradient fill of a project card's team tab.
+//
+// Each project hue is paired with a neighboring hue of the same brand family
+// (blue -> teal, violet -> blue, ...), so the 8 projects get 8 different
+// two-color gradients, and the first color is always the project's own
+// accent: the tab and the card's monogram/progress bar read as one identity.
+// Pairs are [project hue index, partner hue index] into PROJECT_HUES.
+const TAB_PARTNER = [2, 0, 5, 1, 3, 3, 4, 0];
+
+// How much of the card surface is mixed back in (0 = full hue, 1 = surface).
+// The tab is a tint, not a solid, so it sits quietly next to the card; the
+// hover values are a step stronger.
+const TAB_TINT = {
+  light: { rest: [0.8, 0.66], hover: [0.7, 0.54] },
+  dark: { rest: [0.64, 0.74], hover: [0.54, 0.64] },
+};
+
+// Returns the tab's two gradient stops (rest and hover), the text color that
+// stays readable on every one of them, and an edge color for its outline.
+export function projectTabForId(id, mode = "light") {
+  const m = mode === "dark" ? "dark" : "light";
+  const i = hashString(id) % PROJECT_HUES.length;
+  const a = PROJECT_HUES[i][m === "dark" ? 2 : 1];
+  const b = PROJECT_HUES[TAB_PARTNER[i]][m === "dark" ? 2 : 1];
+  const surface = BRAND[m].surface;
+  const tint = (amounts) => [mixHex(a, surface, amounts[0]), mixHex(b, surface, amounts[1])];
+  const rest = tint(TAB_TINT[m].rest);
+  const hover = tint(TAB_TINT[m].hover);
+  return {
+    rest,
+    hover,
+    ink: readableInk([...rest, ...hover]),
+    edge: mixHex(a, surface, m === "dark" ? 0.4 : 0.45),
+  };
 }

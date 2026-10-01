@@ -74,7 +74,21 @@ export default function OverviewStats({ projects, userId }) {
   const isTaskList = activeStat === "open" || activeStat === "done";
 
   return (
-    <Box>
+    <Box
+      className="tf-topline"
+      sx={{
+        bgcolor: "background.paper",
+        backgroundImage: "var(--brand-panel-wash)",
+        border: "1px solid",
+        borderColor: "divider",
+        borderRadius: 1,
+        boxShadow: "var(--brand-shadow-card)",
+        overflow: "hidden",
+        px: { xs: 2, sm: 3 },
+        pt: { xs: 2.5, sm: 3 },
+        pb: 1.5,
+      }}
+    >
       <Box sx={{ display: "flex", gap: { xs: 2.5, sm: 4 }, borderBottom: "1px solid", borderColor: "divider" }}>
         {stats.map((s) => {
           const active = activeStat === s.key;
@@ -104,7 +118,7 @@ export default function OverviewStats({ projects, userId }) {
                   right: 0,
                   bottom: -1,
                   height: 2,
-                  bgcolor: "primary.main",
+                  background: "var(--brand-gradient)",
                   opacity: active ? 1 : 0,
                   transition: "opacity .12s ease",
                 },
@@ -206,7 +220,7 @@ function TaskRow({ it, activeStat, today }) {
           color: "text.primary",
           textDecoration: "none",
           transition: "background-color .12s ease",
-          "&:hover": { bgcolor: "action.hover" },
+          "&:hover": { backgroundImage: "var(--brand-gradient-subtle)" },
           "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: -2 },
         }}
       >

@@ -53,7 +53,7 @@ export async function POST(req, { params }) {
   const { task, project } = access;
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to add attachments to this task. Submit a change request instead." },
+      { error: "You don't have permission to add attachments to this task." },
       { status: 403 }
     );
   }

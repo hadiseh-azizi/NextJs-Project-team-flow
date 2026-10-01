@@ -5,23 +5,21 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import {
-  Box, Typography, Button, Skeleton, Alert, LinearProgress, Avatar, AvatarGroup, Tooltip,
+  Box, Typography, Button, Skeleton, Alert, Avatar, AvatarGroup, Tooltip,
 } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
 import { projectColorForId } from "@/lib/entityColor";
 import { avatarInitial } from "@/lib/avatarInitial";
+import GradientProgress from "@/components/GradientProgress";
 import KanbanBoard from "@/components/KanbanBoard";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import RenameDialog from "@/components/RenameDialog";
 import ProjectMembersDialog from "@/components/ProjectMembersDialog";
-import RequestChangeDialog from "@/components/RequestChangeDialog";
-import ChangeRequestsPanel from "@/components/ChangeRequestsPanel";
 import ShareProjectDialog from "@/components/ShareProjectDialog";
 import EditOutlinedIcon from "@mui/icons-material/EditOutlined";
 import GroupOutlinedIcon from "@mui/icons-material/GroupOutlined";
-import RuleFolderOutlinedIcon from "@mui/icons-material/RuleFolderOutlined";
 import ShareOutlinedIcon from "@mui/icons-material/ShareOutlined";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
@@ -45,8 +43,6 @@ export default function ProjectDetailPage() {
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
-  const [changeRequestsOpen, setChangeRequestsOpen] = useState(false);
-  const [requestChangeOpen, setRequestChangeOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
   // KanbanBoard triggers this same reload after every task/column change
@@ -203,20 +199,6 @@ export default function ProjectDetailPage() {
                 Share
               </Button>
             )}
-            {isManager && project.editingMode === "manager_approval" && (
-              <Button
-                color="inherit"
-                startIcon={<RuleFolderOutlinedIcon sx={{ fontSize: 18 }} />}
-                onClick={() => setChangeRequestsOpen(true)}
-              >
-                Change requests
-              </Button>
-            )}
-            {!isManager && !canEdit && (
-              <Button color="inherit" onClick={() => setRequestChangeOpen(true)}>
-                Request a change
-              </Button>
-            )}
             {isManager && (
               <Button color="error" onClick={() => setConfirmDelete(true)}>
                 Delete project
@@ -228,13 +210,7 @@ export default function ProjectDetailPage() {
 
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 4, rowGap: 1.5, mb: 3 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-          <LinearProgress
-            variant="determinate"
-            value={pct}
-            color={pct === 100 ? "success" : "primary"}
-            aria-label="Project progress"
-            sx={{ width: 140 }}
-          />
+          <GradientProgress value={pct} done={pct === 100} label="Project progress" width={140} />
           <Typography variant="body2" color="text.secondary" sx={{ fontVariantNumeric: "tabular-nums" }}>
             {done} of {total} tasks done
           </Typography>
@@ -254,6 +230,12 @@ export default function ProjectDetailPage() {
           </Typography>
         </Box>
       </Box>
+
+      {!canEdit && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          You can view this project but not edit it. {project.manager.name} controls who can edit.
+        </Typography>
+      )}
 
       <KanbanBoard
         projectId={project.id}
@@ -309,25 +291,6 @@ export default function ProjectDetailPage() {
         <ShareProjectDialog open={shareOpen} onClose={() => setShareOpen(false)} projectId={project.id} />
       )}
 
-      {isManager && (
-        <ChangeRequestsPanel
-          open={changeRequestsOpen}
-          onClose={() => setChangeRequestsOpen(false)}
-          projectId={project.id}
-          onApplied={load}
-        />
-      )}
-
-      {!isManager && (
-        <RequestChangeDialog
-          open={requestChangeOpen}
-          onClose={() => setRequestChangeOpen(false)}
-          projectId={project.id}
-          task={null}
-          columns={project.columns}
-          onSubmitted={() => {}}
-        />
-      )}
     </Box>
   );
 }

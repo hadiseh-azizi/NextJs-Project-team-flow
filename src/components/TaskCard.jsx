@@ -88,8 +88,13 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
           opacity: dragging ? 0.85 : exiting ? 0 : 1,
           transform: dragging ? "scale(1.03)" : exiting ? "scale(0.96)" : "scale(1) translateY(0)",
           transition: "box-shadow .12s ease, border-color .12s ease, opacity .15s ease, transform .15s ease",
+          position: "relative",
+          // Completed tasks get a thin brand-gradient edge on the left.
+          "&::before": completed
+            ? { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--brand-gradient-strong)", borderRadius: "6px 0 0 6px", opacity: 0.85 }
+            : undefined,
           "&:active": canEdit ? { cursor: "grabbing" } : undefined,
-          "&:hover": !dragging ? { borderColor: theme.palette.line.strong, boxShadow: theme.tf.shadow.raised, transform: "translateY(-1px)" } : undefined,
+          "&:hover": !dragging ? { borderColor: "var(--brand-border-hover)", boxShadow: theme.tf.shadow.raised, transform: "translateY(-1px)" } : undefined,
           "&:hover .task-delete-btn, &:focus-within .task-delete-btn": { opacity: 1 },
           "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
         })}
@@ -98,6 +103,7 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 0.5 }}>
             <IconButton
               size="small"
+              disabled={!canEdit}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleComplete(task);
@@ -108,9 +114,14 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
                   ? completed
                     ? `Mark "${task.title}" as not completed`
                     : `Mark "${task.title}" as completed`
-                  : `Request marking "${task.title}" as completed`
+                  : completed
+                    ? `"${task.title}" is completed`
+                    : `"${task.title}" is not completed`
               }
-              sx={{ p: 0.5, mt: -0.25, ml: -0.5, color: completed ? "success.main" : "text.secondary", transition: "color .15s ease" }}
+              sx={{
+                p: 0.5, mt: -0.25, ml: -0.5, color: completed ? "success.main" : "text.secondary", transition: "color .15s ease",
+                "&.Mui-disabled": { color: completed ? "success.main" : "text.secondary" },
+              }}
             >
               {completed ? (
                 <CheckCircleIcon className={justCompleted ? "tf-check-pop" : undefined} sx={{ fontSize: 18 }} />

@@ -28,7 +28,7 @@ export async function PATCH(req, { params }) {
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to edit this column. Submit a change request instead." },
+      { error: "You don't have permission to edit this column." },
       { status: 403 }
     );
   }
@@ -127,7 +127,7 @@ export async function DELETE(req, { params }) {
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to delete this column. Submit a change request instead." },
+      { error: "You don't have permission to delete this column." },
       { status: 403 }
     );
   }

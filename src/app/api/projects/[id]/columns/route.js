@@ -59,7 +59,7 @@ export async function POST(req, { params }) {
   if (!project) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to add columns to this project. Submit a change request instead." },
+      { error: "You don't have permission to add columns to this project." },
       { status: 403 }
     );
   }

@@ -5,6 +5,7 @@ import { useTheme } from "@mui/material/styles";
 import { Box, Typography } from "@mui/material";
 import { projectProgress } from "@/lib/taskCompletion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
+import { STOPS } from "@/lib/brand";
 
 const ROW_HEIGHT = 36;
 const MAX_NAME = 18;
@@ -47,6 +48,14 @@ export default function ProgressChart({ projects }) {
     <Box role="img" aria-label={`Progress by project. ${summary}`}>
       <ResponsiveContainer width="100%" height={Math.max(96, data.length * ROW_HEIGHT + 8)}>
         <BarChart layout="vertical" data={data} margin={{ top: 4, right: 40, left: 0, bottom: 4 }} barCategoryGap={12}>
+          <defs>
+            {/* The brand gradient, running across each bar's own length. */}
+            <linearGradient id="tf-chart-gradient" x1="0" y1="0" x2="1" y2="0">
+              {STOPS[theme.palette.mode === "dark" ? "dark" : "light"].map((c, i, a) => (
+                <stop key={c} offset={`${Math.round((i / (a.length - 1)) * 100)}%`} stopColor={c} />
+              ))}
+            </linearGradient>
+          </defs>
           <XAxis type="number" domain={[0, 100]} hide />
           <YAxis
             type="category"
@@ -83,7 +92,7 @@ export default function ProgressChart({ projects }) {
             animationEasing="ease-out"
           >
             {data.map((entry, i) => (
-              <Cell key={i} fill={entry.progress === 100 ? theme.palette.success.main : theme.palette.primary.main} />
+              <Cell key={i} fill={entry.progress === 100 ? theme.palette.success.main : "url(#tf-chart-gradient)"} />
             ))}
             <LabelList
               dataKey="progress"

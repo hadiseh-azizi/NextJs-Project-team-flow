@@ -37,7 +37,7 @@ function formatSize(bytes) {
 const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
 const MAX_TOTAL_SIZE_MB = MAX_TOTAL_ATTACHMENTS_SIZE / (1024 * 1024);
 
-export default function TaskDetailDialog({ task, columns, assignableUsers, canEdit = true, onClose, onChanged, onDeleted, onToggleComplete, onRequestChange }) {
+export default function TaskDetailDialog({ task, columns, assignableUsers, canEdit = true, onClose, onChanged, onDeleted, onToggleComplete }) {
   const isMounted = useIsMounted();
   // Each of these fields (color/column/assignees) saves on every change,
   // with no "submit" step — so a second change can start before the
@@ -259,15 +259,21 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
       <DialogTitle sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "flex-start", gap: 1 }}>
         <IconButton
           size="small"
-          onClick={() => (canEdit ? onToggleComplete(task) : onRequestChange(task))}
+          disabled={!canEdit}
+          onClick={() => onToggleComplete(task)}
           aria-label={
             canEdit
               ? task.completed
                 ? `Mark "${task.title}" as not completed`
                 : `Mark "${task.title}" as completed`
-              : `Request marking "${task.title}" as completed`
+              : task.completed
+                ? "Completed"
+                : "Not completed"
           }
-          sx={{ p: 0.5, mt: 0.25, color: task.completed ? "success.main" : "text.secondary", flexShrink: 0 }}
+          sx={{
+            p: 0.5, mt: 0.25, color: task.completed ? "success.main" : "text.secondary", flexShrink: 0,
+            "&.Mui-disabled": { color: task.completed ? "success.main" : "text.secondary" },
+          }}
         >
           {task.completed ? <CheckCircleIcon sx={{ fontSize: 22 }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 22 }} />}
         </IconButton>
@@ -512,9 +518,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
             Delete task
           </Button>
         ) : (
-          <Button color="inherit" onClick={() => onRequestChange(task)}>
-            Request a change
-          </Button>
+          <span />
         )}
         <Button onClick={onClose} variant="outlined" color="inherit">
           Close

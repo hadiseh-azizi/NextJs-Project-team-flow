@@ -2,8 +2,9 @@ require("./register.cjs");
 const { test, summary, assert } = require("./harness.cjs");
 const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 
-// Covers the new Project-Level Editing Permission + Change Request
-// feature:
+// Covers Project-Level Editing Permission (the change-request flow that
+// originally shipped alongside it was removed — the project manager now
+// grants edit access directly):
 //
 //   - lib/authz.js: canEditProject()/isManagerApprovalMode() (the new
 //     second gate, on top of the existing view-access one from
@@ -11,11 +12,6 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 //   - The new POST/DELETE /api/projects/[id]/editors route (grant/revoke,
 //     manager-only, target must already have project access).
 //   - PATCH /api/projects/[id] accepting the new `editingMode` field.
-//   - The new POST/GET /api/projects/[id]/change-requests routes.
-//   - The new PATCH /api/projects/[id]/change-requests/[requestId] route —
-//     in particular, that an approved moveTask/toggleComplete request is
-//     only auto-applied after re-checking the target still exists, and
-//     that editTask/other are never auto-applied.
 //   - A route-level spot check that tasks/[id]/route.js and
 //     columns/route.js actually call canEditProject and 403 when it
 //     returns false — proving the wiring, not re-testing the pure logic.
@@ -95,6 +91,42 @@ function team() {
   });
 
   // ------------------------------------------------------------------
+  console.log("\nauthz.js — isEligibleEditor (team membership AND project access, never the manager)");
+
+  {
+    resetModuleCache();
+    const { isEligibleEditor } = require("../src/lib/authz.js");
+    const project = { manager: MANAGER_ID, team: team(), members: [EDITOR_ID] };
+    await test("a team member with project access is eligible", async () => {
+      assert.strictEqual(isEligibleEditor(project, EDITOR_ID), true);
+    });
+    await test("a team member WITHOUT project access is not eligible (team membership alone isn't enough)", async () => {
+      assert.strictEqual(isEligibleEditor(project, MEMBER_ID), false);
+    });
+    await test("a user outside the team is not eligible even if listed in project.members", async () => {
+      const p2 = { manager: MANAGER_ID, team: team(), members: [EDITOR_ID, OUTSIDER_ID] };
+      assert.strictEqual(isEligibleEditor(p2, OUTSIDER_ID), false);
+    });
+    await test("the manager is not 'eligible' (they always can edit, never listed)", async () => {
+      assert.strictEqual(isEligibleEditor(project, MANAGER_ID), false);
+    });
+    await test("team membership alone never grants edit in manager_approval mode", async () => {
+      const { canEditProject } = require("../src/lib/authz.js");
+      const p3 = { manager: MANAGER_ID, team: team(), members: [EDITOR_ID, MEMBER_ID], editingMode: "manager_approval", editors: [EDITOR_ID] };
+      assert.strictEqual(canEditProject(p3, MEMBER_ID), false);
+      assert.strictEqual(canEditProject(p3, EDITOR_ID), true);
+      assert.strictEqual(canEditProject(p3, MANAGER_ID), true);
+    });
+    await test("revoking project access also clears the user's edit grant", async () => {
+      resetModuleCache();
+      const calls = [];
+      mockModule("@/models/Project", { updateOne: async (f, u) => { calls.push(u); } });
+      const { applyProjectMembership } = require("../src/lib/authz.js");
+      await applyProjectMembership({ _id: PROJECT_ID, members: [EDITOR_ID], team: team() }, EDITOR_ID, "remove");
+      assert.deepStrictEqual(calls[calls.length - 1], { $pull: { members: EDITOR_ID, editors: EDITOR_ID } });
+    });
+  }
+
   console.log("\nauthz.js — applyProjectEditPermission");
 
   await test("adding an editor is a plain $addToSet, with no seeding step (unlike applyProjectMembership)", async () => {
@@ -138,7 +170,7 @@ function team() {
       applyProjectEditPermission: async (project, targetUserId, action) => {
         applyCalls.push({ targetUserId, action });
       },
-      projectAccessFor: (project, userId) => ({ isProjectMember: isProjectMemberFor(userId) }),
+      isEligibleEditor: (project, userId) => isProjectMemberFor(userId),
     });
     return { applyCalls };
   }
@@ -167,7 +199,7 @@ function team() {
     assert.strictEqual(applyCalls.length, 0);
   });
 
-  await test("POST: 400 when the target doesn't already have access to the project", async () => {
+  await test("POST: 400 when the target isn't eligible (not on the team / no project access)", async () => {
     const { applyCalls } = setupEditorsRouteMocks({ isProjectMemberFor: () => false });
     const { POST } = require("../src/app/api/projects/[id]/editors/route.js");
     const res = await POST(fakeReq({ userId: OUTSIDER_ID }), { params: Promise.resolve({ id: PROJECT_ID }) });
@@ -246,340 +278,6 @@ function team() {
   });
 
   // ------------------------------------------------------------------
-  console.log("\nPOST /api/projects/[id]/change-requests — creation & validation");
-
-  function setupCreateRequestMocks({ callerId = MEMBER_ID, taskExists = true, columnExists = true } = {}) {
-    resetModuleCache();
-    mockModule("next-auth", { getServerSession: async () => ({ user: { id: callerId } }) });
-    mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/lib/authz", { getAccessibleProject: async () => ({ _id: PROJECT_ID, manager: MANAGER_ID }) });
-    mockModule("@/models/Task", {
-      findOne: () => ({ select: function () { return this; }, lean: async () => (taskExists ? { _id: TASK_ID } : null) }),
-    });
-    mockModule("@/models/Column", {
-      findOne: () => ({ select: function () { return this; }, lean: async () => (columnExists ? { _id: COLUMN_ID } : null) }),
-    });
-    let created = null;
-    mockModule("@/models/ChangeRequest", {
-      CHANGE_REQUEST_ACTION_TYPES: ["moveTask", "toggleComplete", "editTask", "other"],
-      create: async (doc) => {
-        created = { _id: REQUEST_ID, status: "pending", createdAt: new Date(), respondedAt: null, respondedBy: null, applyError: null, ...doc };
-        return created;
-      },
-      findById: () => ({
-        populate: function () { return this; },
-        lean: async () => ({
-          ...created,
-          requester: { _id: created.requester, name: "Member" },
-          targetTask: created.targetTask ? { _id: created.targetTask, title: "A task" } : null,
-          targetColumn: created.targetColumn ? { _id: created.targetColumn, name: "A column" } : null,
-        }),
-      }),
-    });
-    return () => created;
-  }
-
-  await test("rejects an invalid actionType", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "deleteEverything", description: "x" }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 400);
-  });
-
-  await test("rejects a missing/empty description", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "other", description: "   " }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 400);
-  });
-
-  await test("moveTask without a targetTaskId is rejected", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "moveTask", description: "move it", targetColumnId: COLUMN_ID }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 400);
-  });
-
-  await test("moveTask without a targetColumnId is rejected", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "moveTask", description: "move it", targetTaskId: TASK_ID }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 400);
-  });
-
-  await test("a targetTaskId that isn't actually in this project is rejected", async () => {
-    setupCreateRequestMocks({ taskExists: false });
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(
-      fakeReq({ actionType: "toggleComplete", description: "mark it done", targetTaskId: TASK_ID }),
-      { params: Promise.resolve({ id: PROJECT_ID }) }
-    );
-    assert.strictEqual(res.status, 404);
-  });
-
-  await test("a targetColumnId that isn't actually in this project is rejected", async () => {
-    setupCreateRequestMocks({ columnExists: false });
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(
-      fakeReq({ actionType: "moveTask", description: "move it", targetTaskId: TASK_ID, targetColumnId: COLUMN_ID }),
-      { params: Promise.resolve({ id: PROJECT_ID }) }
-    );
-    assert.strictEqual(res.status, 404);
-  });
-
-  await test("a well-formed moveTask request is created as pending", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(
-      fakeReq({ actionType: "moveTask", description: "please move this to Done", targetTaskId: TASK_ID, targetColumnId: COLUMN_ID }),
-      { params: Promise.resolve({ id: PROJECT_ID }) }
-    );
-    const json = await res.json();
-    assert.strictEqual(res.status, 201, `expected 201, got ${res.status}: ${JSON.stringify(json)}`);
-    assert.strictEqual(json.status, "pending");
-    assert.strictEqual(json.actionType, "moveTask");
-  });
-
-  await test("an 'other' request needs no target at all", async () => {
-    setupCreateRequestMocks();
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "other", description: "please add a Blocked column" }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 201);
-  });
-
-  await test("access is denied (403) for someone with no view access to the project at all", async () => {
-    resetModuleCache();
-    mockModule("next-auth", { getServerSession: async () => ({ user: { id: OUTSIDER_ID } }) });
-    mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/lib/authz", { getAccessibleProject: async () => null });
-    const { POST } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await POST(fakeReq({ actionType: "other", description: "x" }), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 403);
-  });
-
-  // ------------------------------------------------------------------
-  console.log("\nGET /api/projects/[id]/change-requests — manager sees all, everyone else sees only their own");
-
-  function setupListRequestMocks({ callerId, managerId = MANAGER_ID, findResult }) {
-    resetModuleCache();
-    mockModule("next-auth", { getServerSession: async () => ({ user: { id: callerId } }) });
-    mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/lib/authz", { getAccessibleProject: async () => ({ _id: PROJECT_ID, manager: managerId }) });
-    let capturedFilter = null;
-    mockModule("@/models/ChangeRequest", {
-      find: (filter) => {
-        capturedFilter = filter;
-        return {
-          sort: function () { return this; },
-          populate: function () { return this; },
-          lean: async () => findResult,
-        };
-      },
-    });
-    return () => capturedFilter;
-  }
-
-  await test("the manager's query is not scoped to `requester` — they see every request", async () => {
-    const getFilter = setupListRequestMocks({ callerId: MANAGER_ID, findResult: [] });
-    const { GET } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    await GET(fakeReqWithUrl(`http://x/api/projects/${PROJECT_ID}/change-requests`), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(Object.prototype.hasOwnProperty.call(getFilter(), "requester"), false);
-  });
-
-  await test("a non-manager's query is scoped to their own requests only", async () => {
-    const getFilter = setupListRequestMocks({ callerId: MEMBER_ID, findResult: [] });
-    const { GET } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    await GET(fakeReqWithUrl(`http://x/api/projects/${PROJECT_ID}/change-requests`), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(getFilter().requester, MEMBER_ID);
-  });
-
-  await test("an invalid ?status= filter is rejected with 400", async () => {
-    setupListRequestMocks({ callerId: MANAGER_ID, findResult: [] });
-    const { GET } = require("../src/app/api/projects/[id]/change-requests/route.js");
-    const res = await GET(fakeReqWithUrl(`http://x/api/projects/${PROJECT_ID}/change-requests?status=bogus`), { params: Promise.resolve({ id: PROJECT_ID }) });
-    assert.strictEqual(res.status, 400);
-  });
-
-  // ------------------------------------------------------------------
-  console.log("\nPATCH /api/projects/[id]/change-requests/[requestId] — approve/reject, with safe re-validation");
-
-  function baseChangeRequestDoc(overrides = {}) {
-    return {
-      _id: REQUEST_ID,
-      project: PROJECT_ID,
-      requester: MEMBER_ID,
-      actionType: "other",
-      targetTask: null,
-      targetColumn: null,
-      description: "please do something",
-      status: "pending",
-      createdAt: new Date(),
-      respondedAt: null,
-      respondedBy: null,
-      applyError: null,
-      save: async function () { this.saved = true; },
-      ...overrides,
-    };
-  }
-
-  function setupDecideMocks({ callerId = MANAGER_ID, requestDoc, taskDoc = undefined, columnDoc = undefined } = {}) {
-    resetModuleCache();
-    mockModule("next-auth", { getServerSession: async () => ({ user: { id: callerId } }) });
-    mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/models/Project", { findById: () => ({ select: function () { return this; }, lean: async () => ({ _id: PROJECT_ID, manager: MANAGER_ID }) }) });
-    mockModule("@/models/ChangeRequest", {
-      findOne: () => requestDoc,
-      findById: () => ({
-        populate: function () { return this; },
-        lean: async () => ({
-          ...requestDoc,
-          requester: { _id: requestDoc.requester, name: "Member" },
-          targetTask: requestDoc.targetTask ? { _id: requestDoc.targetTask, title: "A task" } : null,
-          targetColumn: requestDoc.targetColumn ? { _id: requestDoc.targetColumn, name: "A column" } : null,
-          respondedBy: requestDoc.respondedBy ? { _id: requestDoc.respondedBy, name: "Manager" } : null,
-        }),
-      }),
-    });
-    const taskSaveCalls = [];
-    mockModule("@/models/Task", {
-      findOne: (filter) => {
-        if (taskDoc === null) return null;
-        if (taskDoc === undefined) return null;
-        return { ...taskDoc, save: async function () { taskSaveCalls.push({ ...this }); } };
-      },
-    });
-    mockModule("@/models/Column", {
-      findOne: () => ({ lean: async () => columnDoc ?? null }),
-    });
-    return { taskSaveCalls };
-  }
-
-  await test("403 when the caller is not the project manager", async () => {
-    setupDecideMocks({ callerId: MEMBER_ID, requestDoc: baseChangeRequestDoc() });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    assert.strictEqual(res.status, 403);
-  });
-
-  await test("409 when the request has already been decided", async () => {
-    setupDecideMocks({ requestDoc: baseChangeRequestDoc({ status: "approved" }) });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "rejected" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    assert.strictEqual(res.status, 409);
-  });
-
-  await test("rejecting never touches any task, regardless of actionType", async () => {
-    const { taskSaveCalls } = setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "toggleComplete", targetTask: TASK_ID }),
-      taskDoc: { _id: TASK_ID, project: PROJECT_ID, completed: false },
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "rejected" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(json.status, "rejected");
-    assert.strictEqual(taskSaveCalls.length, 0);
-  });
-
-  await test("approving toggleComplete marks the task completed", async () => {
-    const { taskSaveCalls } = setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "toggleComplete", targetTask: TASK_ID }),
-      taskDoc: { _id: TASK_ID, project: PROJECT_ID, completed: false },
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(json.status, "approved");
-    assert.strictEqual(json.applyError, null);
-    assert.strictEqual(taskSaveCalls.length, 1);
-    assert.strictEqual(taskSaveCalls[0].completed, true);
-  });
-
-  await test("approving toggleComplete on an already-completed task is a safe no-op, not an error", async () => {
-    const { taskSaveCalls } = setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "toggleComplete", targetTask: TASK_ID }),
-      taskDoc: { _id: TASK_ID, project: PROJECT_ID, completed: true },
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(json.applyError, null);
-    assert.strictEqual(taskSaveCalls.length, 0, "already completed — nothing to save");
-  });
-
-  await test("approving toggleComplete records applyError instead of throwing when the task was deleted meanwhile", async () => {
-    setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "toggleComplete", targetTask: TASK_ID }),
-      taskDoc: null,
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(res.status, 200, "the decision itself still succeeds");
-    assert.strictEqual(json.status, "approved");
-    assert.ok(json.applyError, "should explain that the automatic follow-through couldn't happen");
-  });
-
-  await test("approving moveTask re-validates and moves the task to the destination column", async () => {
-    resetModuleCache();
-    mockModule("next-auth", { getServerSession: async () => ({ user: { id: MANAGER_ID } }) });
-    mockModule("@/lib/mongodb", { connectDB: async () => {} });
-    mockModule("@/models/Project", { findById: () => ({ select: function () { return this; }, lean: async () => ({ _id: PROJECT_ID, manager: MANAGER_ID }) }) });
-    const requestDoc = baseChangeRequestDoc({ actionType: "moveTask", targetTask: TASK_ID, targetColumn: COLUMN2_ID });
-    mockModule("@/models/ChangeRequest", {
-      findOne: () => requestDoc,
-      findById: () => ({
-        populate: function () { return this; },
-        lean: async () => ({ ...requestDoc, requester: { _id: MEMBER_ID }, targetTask: { _id: TASK_ID, title: "A task" }, targetColumn: { _id: COLUMN2_ID, name: "Done" }, respondedBy: { _id: MANAGER_ID } }),
-      }),
-    });
-    let savedTask = null;
-    const taskDoc = { _id: TASK_ID, project: PROJECT_ID, column: COLUMN_ID, order: 500, save: async function () { savedTask = { ...this }; } };
-    mockModule("@/models/Task", { findOne: () => taskDoc });
-    mockModule("@/models/Column", { findOne: () => ({ lean: async () => ({ _id: COLUMN2_ID, project: PROJECT_ID }) }) });
-    mockModule("@/lib/taskOrdering", {
-      planTaskMove: async ({ task, destColumnId }) => {
-        task.column = destColumnId;
-      },
-      withOptionalTransaction: async (fn) => fn(null),
-    });
-
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(res.status, 200, `expected 200, got ${res.status}: ${JSON.stringify(json)}`);
-    assert.strictEqual(json.applyError, null);
-    assert.strictEqual(savedTask.column, COLUMN2_ID);
-  });
-
-  await test("approving moveTask records applyError when the destination column was deleted meanwhile", async () => {
-    setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "moveTask", targetTask: TASK_ID, targetColumn: COLUMN2_ID }),
-      taskDoc: { _id: TASK_ID, project: PROJECT_ID, column: COLUMN_ID },
-      columnDoc: null, // deleted
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(json.status, "approved");
-    assert.ok(json.applyError);
-  });
-
-  await test("approving an editTask/other request never touches a task — it's just a recorded decision", async () => {
-    const { taskSaveCalls } = setupDecideMocks({
-      requestDoc: baseChangeRequestDoc({ actionType: "editTask", targetTask: TASK_ID }),
-      taskDoc: { _id: TASK_ID, project: PROJECT_ID, completed: false },
-    });
-    const { PATCH } = require("../src/app/api/projects/[id]/change-requests/[requestId]/route.js");
-    const res = await PATCH(fakeReq({ status: "approved" }), { params: Promise.resolve({ id: PROJECT_ID, requestId: REQUEST_ID }) });
-    const json = await res.json();
-    assert.strictEqual(json.status, "approved");
-    assert.strictEqual(json.applyError, null);
-    assert.strictEqual(taskSaveCalls.length, 0, "editTask is a description for the manager, never auto-applied");
-  });
-
-  // ------------------------------------------------------------------
   console.log("\nRoute-level spot check: canEditProject actually gates mutation routes (wiring, not logic)");
 
   await test("PATCH /api/tasks/[id] returns 403 when canEditProject says no", async () => {
@@ -632,6 +330,38 @@ function team() {
     const res = await POST(fakeReq({ name: "New column" }), { params: Promise.resolve({ id: PROJECT_ID }) });
     assert.strictEqual(res.status, 403);
   });
+
+  console.log("\nEvery task/column/attachment mutation route is gated by canEditProject");
+  {
+    const fs = require("fs");
+    const path = require("path");
+    const routes = [
+      ["tasks/route.js", ["POST"]],
+      ["tasks/[id]/route.js", ["PATCH", "DELETE"]],
+      ["tasks/[id]/attachments/route.js", ["POST"]],
+      ["tasks/[id]/attachments/[attachmentId]/route.js", ["DELETE"]],
+      ["projects/[id]/columns/route.js", ["POST"]],
+      ["projects/[id]/columns/[columnId]/route.js", ["PATCH", "DELETE"]],
+      ["projects/[id]/columns/order/route.js", ["PATCH"]],
+    ];
+    for (const [file, methods] of routes) {
+      const src = fs.readFileSync(path.join(__dirname, "../src/app/api", file), "utf8");
+      for (const m of methods) {
+        await test(`${file} ${m} checks canEditProject`, async () => {
+          const start = src.indexOf(`export async function ${m}(`);
+          assert.ok(start >= 0, "handler not found");
+          const next = src.indexOf("export async function", start + 10);
+          const body = src.slice(start, next === -1 ? undefined : next);
+          assert.ok(/canEditProject\(/.test(body), "no canEditProject call in handler");
+        });
+      }
+    }
+    await test("the removed change-request flow is gone (no routes, model or components)", async () => {
+      for (const f of ["models/ChangeRequest.js", "components/RequestChangeDialog.jsx", "components/ChangeRequestsPanel.jsx", "app/api/projects/[id]/change-requests"]) {
+        assert.ok(!fs.existsSync(path.join(__dirname, "../src", f)), f + " should not exist");
+      }
+    });
+  }
 
   summary();
 })();

@@ -39,12 +39,11 @@ export async function PATCH(req, { params }) {
 
   // Viewing the task and editing it are two different bars once a project
   // is in "manager_approval" mode (see lib/authz.js) — a member with view
-  // access but no edit permission gets a distinct 403 here so the
-  // frontend can point them at submitting a change request instead of
-  // treating this like they can't see the task at all.
+  // access but no edit permission gets a distinct 403 here rather than
+  // the 404 used for "can't see this task at all".
   if (!canEditProject(project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to edit this task. Submit a change request instead." },
+      { error: "You don't have permission to edit this task." },
       { status: 403 }
     );
   }
@@ -161,7 +160,7 @@ export async function DELETE(req, { params }) {
   if (!access) return NextResponse.json({ error: "Access denied" }, { status: 403 });
   if (!canEditProject(access.project, userId)) {
     return NextResponse.json(
-      { error: "You don't have permission to delete this task. Submit a change request instead." },
+      { error: "You don't have permission to delete this task." },
       { status: 403 }
     );
   }

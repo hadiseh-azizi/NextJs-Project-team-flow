@@ -45,7 +45,11 @@ function BoardPreview() {
   return (
     <Box aria-hidden sx={{ display: "flex", gap: 1.25, alignItems: "flex-start" }}>
       {cols.map((c) => (
-        <Box key={c.label} sx={{ flex: 1, minWidth: 0, bgcolor: "surface.sunken", borderRadius: 2, p: 1 }}>
+        <Box
+          key={c.label}
+          // The third column is dropped on phones: three would be ~90px wide each.
+          sx={{ flex: 1, minWidth: 0, bgcolor: "var(--brand-surface-tint)", borderRadius: 1, p: 1, display: c.done ? { xs: "none", sm: "block" } : "block" }}
+        >
           <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, pl: 0.5, pb: 1, minHeight: 24 }}>
             {c.done && <CheckCircleIcon sx={{ fontSize: 14, color: "success.main" }} />}
             <Typography variant="caption" sx={{ fontWeight: 600 }} noWrap>
@@ -59,7 +63,19 @@ function BoardPreview() {
             {c.cards.map((card) => (
               <Box
                 key={card.title}
-                sx={{ bgcolor: "background.paper", border: "1px solid", borderColor: "divider", borderRadius: 1, p: 1, boxShadow: "var(--brand-shadow-card)" }}
+                sx={{
+                  position: "relative",
+                  bgcolor: "background.paper",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  p: 1,
+                  pl: 1.5,
+                  boxShadow: "var(--brand-shadow-card)",
+                  overflow: "hidden",
+                  // A 3px brand-gradient edge on the left of each card.
+                  "&::before": { content: '""', position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: "var(--brand-gradient-strong)", opacity: c.done ? 0.45 : 0.9 },
+                }}
               >
                 <Typography sx={{ fontSize: 12.5, fontWeight: 500, lineHeight: 1.35 }}>{card.title}</Typography>
                 {(card.due || card.who) && (
@@ -83,9 +99,9 @@ function BoardPreview() {
 
 export default function Home() {
   return (
-    <Box>
-      <Container maxWidth="lg" component="header" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2.5 }}>
-        <TeamFlowBrand size="lg" />
+    <Box sx={{ overflowX: "clip" }}>
+      <Container maxWidth="lg" component="header" sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", py: 2.5, gap: 1 }}>
+        <TeamFlowBrand size="lg" collapseOnNarrow />
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 } }}>
           <ThemeToggleButton />
           <Button component={Link} href="/login" color="inherit" sx={{ color: "text.secondary" }}>
@@ -116,14 +132,44 @@ export default function Home() {
             </Box>
           </Grid>
           <Grid item xs={12} md={6}>
-            <BoardPreview />
+            {/* The preview sits on a framed panel; two soft color fields
+                behind it (see .tf-hero-glow) are the only decoration. */}
+            <Box sx={{ position: "relative", isolation: "isolate" }}>
+              <Box aria-hidden className="tf-hero-glow" sx={{ inset: { xs: "-6% 0", md: "-14% -8%" } }} />
+              <Box
+                className="tf-ring"
+                sx={{
+                  position: "relative",
+                  zIndex: 1,
+                  bgcolor: "background.paper",
+                  borderRadius: 1.5,
+                  p: { xs: 1.25, sm: 2 },
+                  boxShadow: "var(--brand-shadow-raised), var(--brand-glow)",
+                }}
+              >
+                <BoardPreview />
+              </Box>
+            </Box>
           </Grid>
         </Grid>
 
-        <Grid container spacing={{ xs: 3, md: 6 }} sx={{ mt: { xs: 8, md: 12 } }} component="section" aria-label="Features">
+        <Grid container spacing={{ xs: 2.5, md: 3 }} sx={{ mt: { xs: 8, md: 12 } }} component="section" aria-label="Features">
           {FEATURES.map((f) => (
             <Grid item xs={12} md={4} key={f.title}>
-              <Box sx={{ borderTop: "1px solid", borderColor: "line.strong", pt: 2 }}>
+              <Box
+                className="tf-topline"
+                sx={{
+                  height: "100%",
+                  bgcolor: "background.paper",
+                  border: "1px solid",
+                  borderColor: "divider",
+                  borderRadius: 1,
+                  p: 2.5,
+                  pt: 3,
+                  transition: "border-color .15s ease",
+                  "&:hover": { borderColor: "var(--brand-border-hover)" },
+                }}
+              >
                 <Typography variant="subtitle1" component="h2" sx={{ mb: 0.5 }}>
                   {f.title}
                 </Typography>
@@ -136,13 +182,9 @@ export default function Home() {
         </Grid>
       </Container>
 
-      <Container
-        maxWidth="lg"
-        component="footer"
-        sx={{ py: 3, borderTop: "1px solid", borderColor: "divider", textAlign: "center" }}
-      >
-        <Typography variant="caption" color="text.secondary" component="p" sx={{ lineHeight: 1.8 }}>
-          Designed by Hadiseh Azizi
+      <Container maxWidth="lg" component="footer" sx={{ py: 3, borderTop: "1px solid", borderColor: "divider" }}>
+        <Typography variant="caption" color="text.secondary">
+           Designed by Hadiseh Azizi
           <br />
           Supervised by Dr. Ghanbarpur
           <br />
