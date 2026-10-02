@@ -13,7 +13,11 @@ import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 // title — the same treatment ProjectCard/TeamCard use, so a project or
 // team's detail page still reads as "the same one" you clicked from the
 // grid. Omitted everywhere else; it's optional and defaults to nothing.
-export default function PageHeader({ title, description, back, actions, accent, sx }) {
+// `subtitle`, when passed, is plain supporting text set beside the title
+// (the project page uses it for the team name). It is deliberately inert:
+// no link, hover or pointer styling. On narrow screens it wraps under the
+// title.
+export default function PageHeader({ title, subtitle, description, back, actions, accent, sx }) {
   return (
     <Box sx={{ mb: { xs: 3, md: 4 }, ...sx }}>
       {back && (
@@ -40,15 +44,26 @@ export default function PageHeader({ title, description, back, actions, accent, 
       )}
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "flex-end", justifyContent: "space-between", gap: 2 }}>
         <Box sx={{ minWidth: 0, flex: "1 1 320px" }}>
-          <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "center", gap: 1.25 }}>
-            {accent && (
-              <Box
-                aria-hidden
-                sx={{ width: 11, height: 11, borderRadius: "50%", flexShrink: 0, background: (theme) => accentGradient(accent, theme.palette.mode), boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.18)}` }}
-              />
+          <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", columnGap: 1.5, rowGap: 0.25 }}>
+            <Typography variant="h4" component="h1" sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "baseline", gap: 1.25, minWidth: 0 }}>
+              {accent && (
+                <Box
+                  aria-hidden
+                  sx={{ alignSelf: "center", width: 11, height: 11, borderRadius: "50%", flexShrink: 0, background: (theme) => accentGradient(accent, theme.palette.mode), boxShadow: (theme) => `inset 0 0 0 1px ${alpha(theme.palette.text.primary, 0.18)}` }}
+                />
+              )}
+              <span>{title}</span>
+            </Typography>
+            {subtitle && (
+              <Typography
+                component="span"
+                color="text.secondary"
+                sx={{ fontSize: "1rem", fontWeight: 500, minWidth: 0, overflowWrap: "anywhere", cursor: "default" }}
+              >
+                {subtitle}
+              </Typography>
             )}
-            {title}
-          </Typography>
+          </Box>
           {description && (
             <Typography color="text.secondary" sx={{ mt: 0.75, maxWidth: 620, overflowWrap: "anywhere" }}>
               {description}

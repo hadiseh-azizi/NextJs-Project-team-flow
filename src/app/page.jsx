@@ -7,7 +7,7 @@ import { pastelForString } from "@/lib/pastelColor";
 
 const FEATURES = [
   {
-    title: "Kanban boards",
+    title: "Boards",
     desc: "Organize work into columns you name yourself, and move tasks between them.",
   },
   {

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import {
   Box, Typography, Button, Skeleton, Alert, Avatar, AvatarGroup, Tooltip,
 } from "@mui/material";
@@ -162,6 +161,7 @@ export default function ProjectDetailPage() {
         back={{ href: "/dashboard/projects", label: "Projects" }}
         accent={projectColorForId(project.id, mode).strong}
         title={project.name}
+        subtitle={project.team.name}
         description={project.description}
         sx={{ mb: 3 }}
         actions={
@@ -178,9 +178,6 @@ export default function ProjectDetailPage() {
                 Rename
               </Button>
             )}
-            <Button component={Link} href={`/dashboard/teams/${project.team.id}`} variant="outlined" color="inherit">
-              Team: {project.team.name}
-            </Button>
             {isManager && (
               <Button
                 color="inherit"

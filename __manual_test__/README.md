@@ -52,6 +52,7 @@ node __manual_test__/38-brand-color-system.test.cjs
 node __manual_test__/39-brand-gradient-system.test.cjs
 node __manual_test__/40-team-initial-and-project-tab.test.cjs
 node __manual_test__/41-horizontal-collapse-no-done-column.test.cjs
+node __manual_test__/42-projects-responsive-loading.test.cjs
 ```
 
 (`24-task-creation-attachments.test.cjs` exists in the suite but was

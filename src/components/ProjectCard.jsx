@@ -9,12 +9,12 @@ import { projectColorForId, projectTabForId } from "@/lib/entityColor";
 import { projectProgress } from "@/lib/taskCompletion";
 import { avatarInitial } from "@/lib/avatarInitial";
 import { staggerDelay } from "@/lib/staggerDelay";
-
-// Height of the team tab. It is drawn 1px taller than the space reserved
-// for it above the card, so its bottom row sits on top of the card's top
-// border and the tab reads as attached to the card, not floating above it.
-const TAB_HEIGHT = 30;
-const CARD_RADIUS = 30;
+import {
+  PROJECT_TAB_HEIGHT as TAB_HEIGHT,
+  PROJECT_CARD_RADIUS as CARD_RADIUS,
+  PROJECT_BODY_PADDING,
+  PROJECT_BODY_MIN_HEIGHT,
+} from "@/lib/projectGrid";
 
 const VISUALLY_HIDDEN = {
   position: "absolute",
@@ -25,7 +25,7 @@ const VISUALLY_HIDDEN = {
   whiteSpace: "nowrap",
 };
 
-// One project as a square card with its team's name on a tab at the
+// One project as a compact card with its team's name on a tab at the
 // top-left, like a folder. The tab and the card share a surface color and
 // a continuous border, so the tab is part of the card rather than a badge
 // on it. Team color lives on the tab (a colored top edge); project color
@@ -33,10 +33,11 @@ const VISUALLY_HIDDEN = {
 // the team -> project relationship reads without any extra labels.
 //
 // The whole thing — tab included — is one link to the project. Progress
-// sits at the bottom behind a hairline, so cards line up across a row
-// however much description they carry. If a name or description is long
-// enough that the content needs more room than a square gives it, the card
-// grows a little rather than clipping.
+// sits at the bottom behind a hairline, and every card in a grid row is
+// stretched to the row's height, so rows line up however much description
+// the cards carry. Height follows the content (name and description are
+// clamped to two lines each) down to a short minimum; sizes are shared with
+// ProjectCardSkeleton through lib/projectGrid.js.
 //
 // `index` only feeds the entrance stagger; the tab enters with its card.
 export default function ProjectCard({ project, index = 0 }) {
@@ -48,7 +49,7 @@ export default function ProjectCard({ project, index = 0 }) {
   const tabGradient = (stops) => `linear-gradient(120deg, ${stops[0]}, ${stops[1]})`;
 
   return (
-    <Box className="tf-settle-in" sx={{ animationDelay: `${staggerDelay(index, 35)}ms` }}>
+    <Box className="tf-settle-in" sx={{ display: "flex", minWidth: 0, animationDelay: `${staggerDelay(index, 35)}ms` }}>
       <CardActionArea
         component={Link}
         href={`/dashboard/projects/${project.id}`}
@@ -58,6 +59,8 @@ export default function ProjectCard({ project, index = 0 }) {
           const ring = theme.palette.primary.main;
           return {
             display: "block",
+            flex: 1,
+            minWidth: 0,
             borderRadius: 0,
             overflow: "visible",
             "& .MuiCardActionArea-focusHighlight": { display: "none" },
@@ -65,6 +68,9 @@ export default function ProjectCard({ project, index = 0 }) {
 
             "& .tf-project-frame": {
               position: "relative",
+              display: "flex",
+              flexDirection: "column",
+              height: "100%",
               paddingTop: `${TAB_HEIGHT - 1}px`,
               transition: "transform .18s ease",
             },
@@ -106,13 +112,13 @@ export default function ProjectCard({ project, index = 0 }) {
             "& .tf-project-body": {
               position: "relative",
               boxSizing: "border-box",
-              // Square from tablet up; a touch wider than tall in the single
-              // phone column, where a full-width square would be mostly empty.
-              aspectRatio: { xs: "6 / 5", sm: "1 / 1" },
+              flex: 1,
+              minWidth: 0,
+              minHeight: PROJECT_BODY_MIN_HEIGHT,
               display: "flex",
               flexDirection: "column",
               textAlign: "left",
-              p: "18px",
+              p: PROJECT_BODY_PADDING,
               bgcolor: theme.palette.background.paper,
               // A faint corner wash in the project's own color, fading out
               // well before the text; the surface underneath stays opaque.
@@ -160,7 +166,6 @@ export default function ProjectCard({ project, index = 0 }) {
               component="h2"
               title={project.name}
               sx={{
-                mt: "10px",
                 fontSize: "1rem",
                 lineHeight: 1.3,
                 overflowWrap: "anywhere",
@@ -181,14 +186,14 @@ export default function ProjectCard({ project, index = 0 }) {
                 <Typography
                   variant="body2"
                   color="text.secondary"
-                  sx={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}
+                  sx={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" }}
                 >
                   {project.description}
                 </Typography>
               )}
             </Box>
 
-            <Box sx={{ mt: "12px", pt: "12px", borderTop: "1px solid", borderColor: "divider" }}>
+            <Box sx={{ mt: "10px", pt: "10px", borderTop: "1px solid", borderColor: "divider" }}>
               <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", mb: 0.75 }}>
                 <Typography variant="caption" color="text.secondary">
                   Progress

@@ -6,26 +6,38 @@ import { useSession } from "next-auth/react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Box, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  MenuItem, CircularProgress, Alert, Skeleton, Link as MuiLink,
+  MenuItem, Alert, Link as MuiLink,
 } from "@mui/material";
 import ProjectCard from "@/components/ProjectCard";
+import ProjectCardSkeleton from "@/components/ProjectCardSkeleton";
+import TeamFlowLoader from "@/components/TeamFlowLoader";
 import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
+import { PROJECT_GRID_SX } from "@/lib/projectGrid";
+import { readRememberedProjectCount, readStoredProjectCount, rememberProjectCount } from "@/lib/projectCountCache";
 
-// Cards are square, so the column width is the card size: 260px is the
-// smallest square that still fits a two-line name, a three-line
-// description and the progress block without growing. One column on a
-// phone; the extra top gap leaves room for each card's team tab, which
-// sits above the card's own edge.
-const PROJECT_GRID_SX = {
-  display: "grid",
-  columnGap: 3,
-  rowGap: 3.5,
-  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))",
+// The branded loader only appears if loading is still going after this
+// long, so a fast response does not flash a spinner for a few frames.
+const LOADER_DELAY_MS = 200;
+
+// Dialog that fits a phone: 16px from each edge instead of MUI's 32px, the
+// form inside is the flex column the paper scrolls (title and actions stay
+// put, the fields scroll), and long text wraps instead of widening it.
+const DIALOG_SX = {
+  "& .MuiDialog-paper": {
+    m: { xs: 2, sm: 4 },
+    width: { xs: "calc(100% - 32px)", sm: "100%" },
+    maxHeight: { xs: "calc(100% - 32px)", sm: "calc(100% - 64px)" },
+    overflowWrap: "anywhere",
+  },
+  "& .MuiDialogTitle-root": { px: { xs: 2, sm: 3 } },
+  "& .MuiDialogContent-root": { px: { xs: 2, sm: 3 } },
+  "& .MuiDialogActions-root": { px: { xs: 2, sm: 3 }, flexWrap: "wrap" },
 };
+const DIALOG_FORM_SX = { display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" };
 
 function ProjectsPageInner() {
   const { data: session } = useSession();
@@ -36,6 +48,15 @@ function ProjectsPageInner() {
   const [projects, setProjects] = useState([]);
   const [myTeams, setMyTeams] = useState([]);
   const [loading, setLoading] = useState(true);
+  // True once a load has succeeded in this visit. After that, a reload
+  // (a project was just created) keeps the cards on screen instead of
+  // swapping them for placeholders.
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const userId = session?.user?.id;
+  // How many projects the last load returned (this tab, this account), or
+  // null if there is none to go on. Only ever a count we actually saw.
+  const [rememberedCount, setRememberedCount] = useState(() => readRememberedProjectCount(userId));
+  const [showLoader, setShowLoader] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -53,6 +74,7 @@ function ProjectsPageInner() {
       if (!isMounted() || !isCurrent()) return;
       setProjects(projectsData);
       setMyTeams(teamsData);
+      setHasLoaded(true);
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       if (err.status === 401) {
@@ -68,6 +90,32 @@ function ProjectsPageInner() {
   useEffect(() => {
     load();
   }, []);
+
+  // After a full page reload the in-memory count is gone but the tab's
+  // sessionStorage copy is not. Read it once the session (and so the user
+  // id) is known — never during render, which would not match the server.
+  useEffect(() => {
+    if (rememberedCount === null && userId) setRememberedCount(readStoredProjectCount(userId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
+  // Remember the count after every successful load. This is an effect (not
+  // part of load()) because on a full reload the user id can arrive after
+  // the first response does.
+  useEffect(() => {
+    if (hasLoaded && userId) rememberProjectCount(userId, projects.length);
+  }, [hasLoaded, userId, projects.length]);
+
+  // Delay the branded loader slightly (see LOADER_DELAY_MS).
+  const waitingWithoutCount = loading && !hasLoaded && !(rememberedCount > 0);
+  useEffect(() => {
+    if (!waitingWithoutCount) {
+      setShowLoader(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setShowLoader(true), LOADER_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [waitingWithoutCount]);
 
   // Coming from a link like /dashboard/projects?new=1 (e.g. the "Create
   // your first project" button on the dashboard) opens the dialog right
@@ -122,8 +170,8 @@ function ProjectsPageInner() {
         }
       />
 
-      <Dialog open={showForm} onClose={() => setShowForm(false)} fullWidth maxWidth="xs">
-        <form onSubmit={handleCreate}>
+      <Dialog open={showForm} onClose={() => setShowForm(false)} fullWidth maxWidth="xs" sx={DIALOG_SX}>
+        <Box component="form" onSubmit={handleCreate} sx={DIALOG_FORM_SX}>
           <DialogTitle>New project</DialogTitle>
           <DialogContent>
             {teamsIManage.length === 0 ? (
@@ -185,17 +233,24 @@ function ProjectsPageInner() {
               </Button>
             )}
           </DialogActions>
-        </form>
+        </Box>
       </Dialog>
 
-      {loading ? (
-        <Box aria-busy="true" aria-label="Loading projects" sx={PROJECT_GRID_SX}>
-          {[0, 1, 2].map((i) => (
-            <Box key={i} sx={{ pt: "25px" }}>
-              <Skeleton variant="rounded" sx={{ width: "100%", height: "auto", aspectRatio: "1 / 1" }} />
-            </Box>
-          ))}
-        </Box>
+      {loading && !hasLoaded ? (
+        // Count remembered from the last load -> exactly that many
+        // placeholders, in the real grid. Not known -> the Team Flow loader
+        // (after a short delay) and no placeholders: we do not guess.
+        rememberedCount > 0 ? (
+          <Box role="status" aria-busy="true" aria-label="Loading projects" className="tf-fade-in" sx={PROJECT_GRID_SX}>
+            {Array.from({ length: rememberedCount }, (_, i) => (
+              <ProjectCardSkeleton key={i} />
+            ))}
+          </Box>
+        ) : showLoader ? (
+          <TeamFlowLoader label="Loading projects" />
+        ) : (
+          <Box aria-busy="true" sx={{ minHeight: 240 }} />
+        )
       ) : loadError ? (
         <Alert severity="error" action={<Button color="inherit" size="small" onClick={load}>Retry</Button>}>
           {loadError}
@@ -235,13 +290,7 @@ function ProjectsPageInner() {
 
 export default function ProjectsPage() {
   return (
-    <Suspense
-      fallback={
-        <Box display="flex" justifyContent="center" py={8}>
-          <CircularProgress size={28} aria-label="Loading" />
-        </Box>
-      }
-    >
+    <Suspense fallback={<TeamFlowLoader label="Loading projects" />}>
       <ProjectsPageInner />
     </Suspense>
   );
