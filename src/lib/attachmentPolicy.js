@@ -2,6 +2,25 @@
 // route and the attachment-by-id route (download/delete). Kept in one
 // place so the limits enforced server-side can never drift between the
 // two routes.
+
+const MB = 1024 * 1024;
+
+// Deployment constraint — Vercel Functions reject any request body, and
+// any non-streamed response body, larger than 4.5 MB (a request over the
+// limit is answered by the platform itself with a 413
+// FUNCTION_PAYLOAD_TOO_LARGE before this app's code ever runs; an
+// oversized response becomes a 500). The docs don't say whether "MB" means
+// 10^6 or 2^20 bytes, so the stricter reading (4,500,000 bytes) is used
+// here. Every request-size budget below must stay under this with room to
+// spare — __manual_test__/48-vercel-body-limits-h5.test.cjs enforces that.
+export const PLATFORM_BODY_LIMIT_BYTES = 4_500_000;
+
+// What counts toward these limits: files travel as raw binary parts of a
+// multipart/form-data body (upload) or as raw bytes in the response
+// (download) — never as base64 over the wire. So the platform limit is
+// measured against raw file size plus a little multipart framing, and the
+// ~33% base64 inflation only applies to what is stored in MongoDB
+// (see the per-task total below), not to request/response bodies.
 //
 // Architecture note: attachments are stored as base64 inside the Task
 // document itself (see models/Task.js) rather than in an external object
@@ -9,17 +28,34 @@
 // choice — it needs no extra service, no extra credentials, and no extra
 // deployment step — but it borrows the *whole document's* budget from
 // MongoDB's hard 16MB-per-document BSON limit, and base64 inflates raw
-// bytes by ~33%. Every limit below exists to keep a Task document safely
-// inside that ceiling even with several attachments, a full activity
-// history of fields, and future growth in mind.
+// bytes by ~33%. The per-task total below exists to keep a Task document
+// safely inside that ceiling even with several attachments.
 
-export const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB per file, raw bytes
+// Per file, raw bytes. 4 MiB + the 64 KiB multipart allowance below is
+// 4,259,840 bytes: ~240 KB under the platform limit.
+export const MAX_FILE_SIZE = 4 * MB;
 
-// 8MB of raw attachment data encodes to ~10.9MB of base64. Combined with
-// the rest of a task's fields (title, description, assignees, etc. — all
-// tiny by comparison), that leaves multiple MB of headroom under the 16MB
-// BSON limit.
-export const MAX_TOTAL_ATTACHMENTS_SIZE = 8 * 1024 * 1024; // 8MB per task
+// Schema-level ceiling for an already-STORED attachment (models/Task.js).
+// Deliberately NOT lowered with MAX_FILE_SIZE: attachments uploaded under
+// the earlier 5 MiB limit still exist in the database, and Mongoose
+// re-validates every loaded attachment subdocument whenever its task is
+// saved (rename, move, complete, ...). A lower ceiling here would make
+// those saves fail for any task holding such a file. New uploads are held
+// to MAX_FILE_SIZE by the routes, which is what the platform limit needs.
+export const MAX_STORED_FILE_SIZE = 5 * MB;
+
+// Total raw attachment data a task may hold across all of its uploads
+// (each upload is its own request, so this is a storage limit, not a
+// request limit). 8 MiB of raw data encodes to ~10.7 MB of base64, which
+// leaves multiple MB of headroom under the 16MB BSON limit.
+export const MAX_TOTAL_ATTACHMENTS_SIZE = 8 * MB; // 8MB per task
+
+// Total raw file data that can ride along in ONE task-creation request.
+// Unlike MAX_TOTAL_ATTACHMENTS_SIZE this *is* a request-size limit: every
+// file is in the same body, so the platform limit applies to their sum.
+// More files can still be added afterwards, one request each, up to the
+// per-task total above.
+export const MAX_CREATE_ATTACHMENTS_SIZE = 4 * MB;
 
 // A separate cap on *count*, independent of total size — without it nothing
 // stops a task from accumulating hundreds of tiny files, which bloats the
@@ -32,21 +68,29 @@ export const MAX_ATTACHMENTS_PER_TASK = 20;
 // larger than MAX_FILE_SIZE itself: a multipart body also carries the
 // boundary delimiters, per-part headers, and the (already length-capped)
 // filename, which add a small, bounded amount of overhead on top of the
-// raw file bytes. 64KB is generous for that overhead for the single-file
-// uploads this endpoint accepts, while still keeping the effective limit
-// on actual file content essentially at MAX_FILE_SIZE.
+// raw file bytes (well under 1 KB in practice). 64KB is generous for that
+// overhead for the single-file uploads this endpoint accepts, while still
+// keeping the effective limit on actual file content essentially at
+// MAX_FILE_SIZE.
 const MULTIPART_OVERHEAD_ALLOWANCE = 64 * 1024;
 export const MAX_UPLOAD_REQUEST_SIZE = MAX_FILE_SIZE + MULTIPART_OVERHEAD_ALLOWANCE;
 
 // Budget for the entire multipart request body when a task is created
 // with attachments already attached (see the create-time upload path in
-// app/api/tasks/route.js). Unlike MAX_UPLOAD_REQUEST_SIZE above — sized
-// for the post-creation route's single-file uploads — this request can
-// carry up to MAX_ATTACHMENTS_PER_TASK files at once, so the budget is
-// the per-task total plus a modest per-part allowance for multipart
-// boundaries/headers across that many parts (rather than one).
+// app/api/tasks/route.js): the files themselves, plus a per-part allowance
+// for multipart boundaries/headers across up to MAX_ATTACHMENTS_PER_TASK
+// parts, plus room for the "data" field (the task's own JSON: title,
+// description up to 5000 chars at up to 3 bytes each in UTF-8, assignees).
 const CREATE_MULTIPART_OVERHEAD_ALLOWANCE = MAX_ATTACHMENTS_PER_TASK * 2 * 1024;
-export const MAX_CREATE_UPLOAD_REQUEST_SIZE = MAX_TOTAL_ATTACHMENTS_SIZE + CREATE_MULTIPART_OVERHEAD_ALLOWANCE;
+const CREATE_JSON_FIELD_ALLOWANCE = 64 * 1024;
+export const MAX_CREATE_UPLOAD_REQUEST_SIZE =
+  MAX_CREATE_ATTACHMENTS_SIZE + CREATE_MULTIPART_OVERHEAD_ALLOWANCE + CREATE_JSON_FIELD_ALLOWANCE;
+
+// Human-readable limits for error messages / UI copy, derived from the
+// constants above so the text can never disagree with what is enforced.
+export const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / MB;
+export const MAX_TOTAL_ATTACHMENTS_SIZE_MB = MAX_TOTAL_ATTACHMENTS_SIZE / MB;
+export const MAX_CREATE_ATTACHMENTS_SIZE_MB = MAX_CREATE_ATTACHMENTS_SIZE / MB;
 
 const MAX_FILENAME_LENGTH = 150;
 
@@ -102,12 +146,34 @@ function getExtension(filename) {
   return match ? match[0].toLowerCase() : "";
 }
 
+// MIME types browsers are known to report for a genuine ".csv" file.
+// Chrome/Edge on Windows with Excel installed report CSVs as
+// "application/vnd.ms-excel" (the type Windows associates with the
+// extension), and other platforms/browsers use the older text/* and
+// application/* aliases. Deliberately narrow: an empty type,
+// "application/octet-stream" or an unrelated type (e.g. "application/pdf")
+// on a ".csv" is still rejected rather than guessed at.
+const CSV_DECLARED_MIME_ALIASES = new Set([
+  "text/csv",
+  "application/csv",
+  "text/x-csv",
+  "application/x-csv",
+  "text/comma-separated-values",
+  "application/vnd.ms-excel",
+]);
+
 // Canonical MIME type to validate and store for an upload. For source-code
 // extensions the client-declared type is unreliable (see CODE_EXTENSIONS),
-// so it's replaced with "text/plain"; for every other type the declared
-// type is returned unchanged and must still match the extension.
+// so it's replaced with "text/plain". For ".csv" the declared type is
+// normalised to "text/csv" only when it is one of the known browser
+// aliases above; the bytes are then still checked by validateAttachmentFile
+// (the declared type alone never decides acceptance). For every other
+// type the declared type is returned unchanged and must still match the
+// extension.
 export function resolveAttachmentMimeType(filename, declaredMimeType) {
-  if (CODE_EXTENSION_SET.has(getExtension(filename))) return "text/plain";
+  const ext = getExtension(filename);
+  if (CODE_EXTENSION_SET.has(ext)) return "text/plain";
+  if (ext === ".csv" && CSV_DECLARED_MIME_ALIASES.has(declaredMimeType)) return "text/csv";
   return declaredMimeType;
 }
 
@@ -187,6 +253,29 @@ function looksLikeText(buffer) {
   return true;
 }
 
+// Leading bytes of binary formats a mislabeled file would start with.
+// Used for ".csv" because its declared type can legitimately be
+// "application/vnd.ms-excel", the same type real binary .xls files carry
+// - so a spreadsheet, archive or image renamed to ".csv" must be refused on
+// content, not on the declared type.
+const BINARY_SIGNATURES = [
+  [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1], // OLE2 (.xls/.doc/.ppt)
+  [0x50, 0x4b, 0x03, 0x04], // zip container (.xlsx/.docx/.pptx/.zip)
+  [0x50, 0x4b, 0x05, 0x06], // empty zip
+  [0x25, 0x50, 0x44, 0x46, 0x2d], // %PDF-
+  [0x89, 0x50, 0x4e, 0x47], // PNG
+  [0xff, 0xd8, 0xff], // JPEG
+  [0x47, 0x49, 0x46, 0x38], // GIF
+  [0x52, 0x49, 0x46, 0x46], // RIFF (WebP/WAV/AVI)
+  [0x4d, 0x5a], // "MZ" - Windows executable
+  [0x7f, 0x45, 0x4c, 0x46], // ELF executable
+];
+
+function looksLikeCsv(buffer) {
+  if (!looksLikeText(buffer)) return false;
+  return !BINARY_SIGNATURES.some((sig) => bufferStartsWith(buffer, sig));
+}
+
 function matchesSignature(buffer, mimeType) {
   switch (mimeType) {
     case "image/png":
@@ -200,8 +289,9 @@ function matchesSignature(buffer, mimeType) {
     case "application/pdf":
       return bufferStartsWith(buffer, [0x25, 0x50, 0x44, 0x46, 0x2d]); // "%PDF-"
     case "text/plain":
-    case "text/csv":
       return looksLikeText(buffer);
+    case "text/csv":
+      return looksLikeCsv(buffer);
     default:
       if (ZIP_OFFICE_MIMES.has(mimeType)) {
         // Local file header "PK\x03\x04" — an empty/edge-case zip using
@@ -230,13 +320,28 @@ export function validateAttachmentFile(filename, mimeType, buffer) {
   return { ok: true };
 }
 
+// Percent-encodes a value for the RFC 5987 / RFC 8187 `ext-value` used by
+// `filename*`. The only characters allowed to stay literal are the
+// RFC 5987 `attr-char` set: ALPHA / DIGIT / "!" / "#" / "$" / "&" / "+" /
+// "-" / "." / "^" / "_" / "`" / "|" / "~". encodeURIComponent() is close
+// but leaves "'" "(" ")" "*" unescaped, and "'" in particular is the
+// delimiter between the charset, language and value parts of an
+// ext-value, so it has to be escaped. It also throws on a lone UTF-16
+// surrogate, which a filename can contain; those become U+FFFD first so a
+// strange name can never turn a download into a 500.
+export function encodeRfc5987(value) {
+  const wellFormed = String(value).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, "\ufffd");
+  return encodeURIComponent(wellFormed).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
 // Builds a Content-Disposition header value that's safe regardless of what
 // characters are in the (already-sanitized) filename: an ASCII-only
 // fallback for older clients, plus an RFC 5987 `filename*` for everyone
 // else so non-ASCII names still display correctly instead of as literal
-// percent-escapes.
+// percent-escapes. The fallback is a quoted-string, so a quote or
+// backslash is never allowed through in it (sanitizeFilename() already
+// strips both; this keeps the header safe if it is ever called without it).
 export function buildContentDisposition(filename) {
-  const asciiFallback = filename.replace(/[^\x20-\x7e]/g, "_") || "file";
-  const encoded = encodeURIComponent(filename);
-  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
+  const asciiFallback = filename.replace(/["\\]/g, "_").replace(/[^\x20-\x7e]/gu, "_") || "file";
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeRfc5987(filename)}`;
 }

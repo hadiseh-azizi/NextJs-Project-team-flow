@@ -60,7 +60,9 @@ export default function ProjectMembersDialog({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId: member.id }),
           });
-      onChanged(data);
+      // The response is the access summary (name, editing mode, members,
+      // editors); the page takes only what this action changed.
+      onChanged(data, hasAccess ? "memberRemoved" : "memberAdded", { removedUserId: member.id });
     } catch (err) {
       setError(errorMessage(err, "Couldn't update this member's access. Please try again."));
     } finally {
@@ -79,7 +81,7 @@ export default function ProjectMembersDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ editingMode: value }),
       });
-      onChanged(data);
+      onChanged(data, "editingMode");
     } catch (err) {
       setModeError(errorMessage(err, "Couldn't update the editing mode. Please try again."));
     } finally {
@@ -100,7 +102,7 @@ export default function ProjectMembersDialog({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId: member.id }),
           });
-      onChanged(data);
+      onChanged(data, "editors");
       setEditorNotice(canEdit ? `${member.name} can no longer edit this project.` : `${member.name} can now edit this project.`);
     } catch (err) {
       setEditorError(errorMessage(err, "Couldn't update this member's editing permission. Please try again."));

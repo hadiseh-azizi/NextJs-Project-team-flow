@@ -10,9 +10,9 @@ import { ThemeModeProvider, useThemeMode } from "@/components/ThemeModeContext";
 
 // Standard MUI + Next.js App Router setup (see MUI's Next.js integration
 // guide) for correctly server-rendering Emotion's CSS-in-JS output.
-function EmotionRegistry({ children }) {
+function EmotionRegistry({ children, nonce }) {
   const [{ cache, flush }] = React.useState(() => {
-    const cache = createCache({ key: "mui" });
+    const cache = createCache({ key: "mui", nonce });
     cache.compat = true;
     const prevInsert = cache.insert;
     let inserted = [];
@@ -41,6 +41,8 @@ function EmotionRegistry({ children }) {
     return (
       <style
         key={cache.key}
+        nonce={nonce}
+        suppressHydrationWarning
         data-emotion={`${cache.key} ${names.join(" ")}`}
         dangerouslySetInnerHTML={{ __html: styles }}
       />
@@ -62,9 +64,9 @@ function MuiThemeBridge({ children }) {
   );
 }
 
-export default function ThemeRegistry({ children }) {
+export default function ThemeRegistry({ children, nonce }) {
   return (
-    <EmotionRegistry>
+    <EmotionRegistry nonce={nonce}>
       <ThemeModeProvider>
         <MuiThemeBridge>{children}</MuiThemeBridge>
       </ThemeModeProvider>

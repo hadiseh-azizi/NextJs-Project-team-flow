@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node scripts/run-tests.cjs"
   },
   "dependencies": {
     "@emotion/cache": "11.14.0",
@@ -22,7 +23,7 @@
     "mongoose": "8.24.4",
     "next": "15.5.25",
     "next-auth": "4.24.15",
-    "nodemailer": "9.1.1",
+    "nodemailer": "10.0.14",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "recharts": "2.15.4"
@@ -38,10 +39,10 @@
     "mongodb-memory-server": "^11.2.0"
   },
   "overrides": {
-    "nodemailer": "9.1.1",
-    "postcss": "8.5.26",
-    "recharts": {
-      "react-is": "19.2.8"
-    }
+    "nodemailer": "10.0.14",
+    "postcss": "8.5.26"
+  },
+  "optionalDependencies": {
+    "bcrypt": "6.0.0"
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, Box, Typography,
   FormControl, Select, OutlinedInput, Checkbox, ListItemText, Chip,
@@ -16,28 +16,45 @@ import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import ColorSwatchPicker from "@/components/ColorSwatchPicker";
-import { FieldLabel } from "@/components/FormField";
+import Field, { FieldLabel } from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
+import { formatDateOnly } from "@/lib/dateOnly";
 import {
   MAX_FILE_SIZE,
+  MAX_FILE_SIZE_MB,
   MAX_TOTAL_ATTACHMENTS_SIZE,
+  MAX_TOTAL_ATTACHMENTS_SIZE_MB,
   MAX_ATTACHMENTS_PER_TASK,
   ALLOWED_TYPES_SUMMARY,
   ATTACHMENT_ACCEPT,
   isAllowedAttachmentExtension,
 } from "@/lib/attachmentPolicy";
+import { MAX_TASK_DESCRIPTION_LENGTH } from "@/lib/fieldLimits";
+import { formatSize } from "@/lib/formatSize";
 
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+// Due dates are stored as UTC midnight (see lib/dateOnly.js), so the day the
+// person picked is the first ten characters of the ISO string — the same
+// value a date input uses.
+function toDateInputValue(dueDate) {
+  return dueDate ? String(dueDate).slice(0, 10) : "";
 }
 
-const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
-const MAX_TOTAL_SIZE_MB = MAX_TOTAL_ATTACHMENTS_SIZE / (1024 * 1024);
+// A date input reports "" while it is half-typed and, in some browsers,
+// passes through years like 0002 on the way to 2026. Only a complete,
+// plausible date is ever sent to the server.
+function isPlausibleDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  return year >= 1900 && year <= 2100 && !Number.isNaN(new Date(value).getTime());
+}
 
-export default function TaskDetailDialog({ task, columns, assignableUsers, canEdit = true, onClose, onChanged, onDeleted, onToggleComplete }) {
+// `onPatched(taskId, fields)` lets the board apply a saved change to its own
+// copy of the task instead of refetching the whole project. When the parent
+// doesn't provide it, every save falls back to `onChanged` (a full reload).
+// `onMoved(task)` does the same for a column change: the response is the
+// moved task (with the new order, and any renumbered siblings).
+export default function TaskDetailDialog({ task, columns, assignableUsers, canEdit = true, onClose, onChanged, onPatched, onMoved, onDeleted, onToggleComplete }) {
   const isMounted = useIsMounted();
   // Each of these fields (color/column/assignees) saves on every change,
   // with no "submit" step — so a second change can start before the
@@ -51,6 +68,12 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
   const colorRequest = useLatestRequest();
   const assigneesRequest = useLatestRequest();
   const titleRequest = useLatestRequest();
+  const descriptionRequest = useLatestRequest();
+  const dueDateRequest = useLatestRequest();
+  // Upload and delete both replace the task's attachment list with the
+  // server's; only the most recently started of the two may apply its
+  // list, so an older response can't bring back a file just deleted.
+  const attachmentsRequest = useLatestRequest();
   // The title field commits on both blur and Enter, which can fire close
   // enough together (Enter, then the resulting blur) to both reach
   // saveTitle() before the first request finishes — mirrors the same
@@ -65,6 +88,13 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [savingTitle, setSavingTitle] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState(task.description ?? "");
+  const [savingDescription, setSavingDescription] = useState(false);
+  const descriptionSaveInFlight = useRef(false);
+  const [dueDateDraft, setDueDateDraft] = useState(toDateInputValue(task.dueDate));
+  const [savingDueDate, setSavingDueDate] = useState(false);
+  const [dueDateError, setDueDateError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [confirmDeleteTask, setConfirmDeleteTask] = useState(false);
@@ -74,6 +104,21 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState("");
   const fileInputRef = useRef(null);
+
+  // Keep the date field in step with the task when it changes underneath
+  // (a save landing, or the board refreshing).
+  const savedDueDate = toDateInputValue(task.dueDate);
+  useEffect(() => {
+    setDueDateDraft(savedDueDate);
+    setDueDateError("");
+  }, [savedDueDate]);
+
+  // Hands a saved change back to the board. Called even if this dialog has
+  // since been closed: the save did happen, and the board should show it.
+  function reportPatch(fields) {
+    if (onPatched) onPatched(task.id, fields);
+    else onChanged();
+  }
 
   function startEditingTitle() {
     setTitleDraft(task.title);
@@ -93,12 +138,12 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     const isCurrent = titleRequest();
     setSavingTitle(true);
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const updated = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: trimmed }),
       });
-      if (isMounted() && isCurrent()) onChanged();
+      if (isCurrent()) reportPatch({ title: updated.title });
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       setActionError(errorMessage(err, "Couldn't rename the task. Please try again."));
@@ -116,12 +161,12 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     const isCurrent = colorRequest();
     setColor(newColor);
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const updated = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ color: newColor }),
       });
-      if (isMounted() && isCurrent()) onChanged();
+      if (isCurrent()) reportPatch({ color: updated.color });
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       setColor(previous);
@@ -135,12 +180,12 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     setAssigneeIds(newIds);
     setSavingAssignees(true);
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const updated = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assigneeIds: newIds }),
       });
-      if (isMounted() && isCurrent()) onChanged();
+      if (isCurrent()) reportPatch({ assignees: updated.assignees });
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       setAssigneeIds(previous);
@@ -157,17 +202,111 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     }
   }
 
+  function startEditingDescription() {
+    setDescriptionDraft(task.description ?? "");
+    setEditingDescription(true);
+  }
+
+  async function saveDescription() {
+    const next = descriptionDraft.trim();
+    // Nothing changed (an empty draft on an empty description counts):
+    // just close the editor.
+    if (next === (task.description ?? "")) {
+      setEditingDescription(false);
+      return;
+    }
+    if (descriptionSaveInFlight.current) return;
+    descriptionSaveInFlight.current = true;
+    const isCurrent = descriptionRequest();
+    setSavingDescription(true);
+    try {
+      // An empty string clears the description (the API stores null).
+      const updated = await apiFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: next }),
+      });
+      if (isCurrent()) reportPatch({ description: updated.description });
+      if (isMounted() && isCurrent()) setEditingDescription(false);
+    } catch (err) {
+      // Stay in the editor with the text intact so nothing typed is lost.
+      if (!isMounted() || !isCurrent()) return;
+      setActionError(errorMessage(err, "Couldn't save the description. Please try again."));
+    } finally {
+      descriptionSaveInFlight.current = false;
+      if (isMounted()) setSavingDescription(false);
+    }
+  }
+
+  // `value` is a "YYYY-MM-DD" string, or null to clear the due date.
+  async function persistDueDate(value) {
+    const isCurrent = dueDateRequest();
+    setSavingDueDate(true);
+    setDueDateError("");
+    try {
+      const updated = await apiFetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate: value }),
+      });
+      if (isCurrent()) reportPatch({ dueDate: updated.dueDate });
+    } catch (err) {
+      if (!isMounted() || !isCurrent()) return;
+      setDueDateDraft(savedDueDate);
+      setActionError(errorMessage(err, "Couldn't update the due date. Please try again."));
+    } finally {
+      if (isMounted() && isCurrent()) setSavingDueDate(false);
+    }
+  }
+
+  // Saved when the field is left or Enter is pressed, not on every change:
+  // a date input fires change events while a date is still being typed.
+  function commitDueDate() {
+    if (savingDueDate) return;
+    if (dueDateDraft === savedDueDate) {
+      setDueDateError("");
+      return;
+    }
+    // An emptied field is not a request to clear — that is the Clear
+    // button — so a half-edited date goes back to what is saved.
+    if (dueDateDraft === "") {
+      setDueDateDraft(savedDueDate);
+      return;
+    }
+    if (!isPlausibleDate(dueDateDraft)) {
+      setDueDateError("Enter a valid date.");
+      return;
+    }
+    persistDueDate(dueDateDraft);
+  }
+
+  function clearDueDate() {
+    setDueDateDraft("");
+    persistDueDate(null);
+  }
+
+  // Closing right after picking a date must not drop it.
+  function handleClose() {
+    if (canEdit && dueDateDraft && dueDateDraft !== savedDueDate && isPlausibleDate(dueDateDraft)) {
+      persistDueDate(dueDateDraft);
+    }
+    onClose();
+  }
+
   async function saveColumn(newColumnId) {
     const previous = columnId;
     const isCurrent = columnRequest();
     setColumnId(newColumnId);
     try {
-      await apiFetch(`/api/tasks/${task.id}`, {
+      const moved = await apiFetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columnId: newColumnId }),
       });
-      if (isMounted() && isCurrent()) onChanged();
+      if (isMounted() && isCurrent()) {
+        if (onMoved) onMoved(moved);
+        else onChanged();
+      }
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       setColumnId(previous);
@@ -205,16 +344,21 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     }
     const currentTotal = task.attachments.reduce((sum, a) => sum + a.size, 0);
     if (currentTotal + file.size > MAX_TOTAL_ATTACHMENTS_SIZE) {
-      setUploadError(`This task has reached its ${MAX_TOTAL_SIZE_MB}MB total attachment limit. Remove a file before adding another.`);
+      setUploadError(`This task has reached its ${MAX_TOTAL_ATTACHMENTS_SIZE_MB}MB total attachment limit. Remove a file before adding another.`);
       return;
     }
 
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    const isCurrentAttachments = attachmentsRequest();
     try {
-      await apiFetch(`/api/tasks/${task.id}/attachments`, { method: "POST", body: formData });
-      if (isMounted()) onChanged();
+      // The response is the task with its attachment list (metadata only).
+      const updated = await apiFetch(`/api/tasks/${task.id}/attachments`, { method: "POST", body: formData });
+      // Superseded by a newer upload/delete: reconcile with a reload
+      // rather than apply a list that may already be out of date.
+      if (isCurrentAttachments()) reportPatch({ attachments: updated.attachments });
+      else onChanged();
     } catch (err) {
       if (isMounted()) setUploadError(errorMessage(err, "Error uploading file"));
     } finally {
@@ -226,11 +370,15 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
     if (!confirmDeleteAttachment || deleting) return;
     setDeleting(true);
     setDeleteAttachmentError("");
+    const isCurrentAttachments = attachmentsRequest();
     try {
-      await apiFetch(`/api/tasks/${task.id}/attachments/${confirmDeleteAttachment.id}`, { method: "DELETE" });
+      const updated = await apiFetch(`/api/tasks/${task.id}/attachments/${confirmDeleteAttachment.id}`, { method: "DELETE" });
+      // Superseded by a newer upload/delete: reconcile with a reload
+      // rather than apply a list that may already be out of date.
+      if (isCurrentAttachments()) reportPatch({ attachments: updated.attachments });
+      else onChanged();
       if (!isMounted()) return;
       setConfirmDeleteAttachment(null);
-      onChanged();
     } catch (err) {
       // Stay open and show why — closing here would leave the file
       // looking un-deletable with no visible explanation.
@@ -255,7 +403,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
   }
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
+    <Dialog open onClose={handleClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
       <DialogTitle sx={{ overflowWrap: "anywhere", display: "flex", alignItems: "flex-start", gap: 1 }}>
         <IconButton
           size="small"
@@ -335,10 +483,76 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
         </Box>
       </DialogTitle>
       <DialogContent>
-        {task.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+        {editingDescription ? (
+          <Box sx={{ mb: 3 }}>
+            <Field
+              label="Description"
+              multiline
+              minRows={3}
+              maxRows={12}
+              autoFocus
+              value={descriptionDraft}
+              onChange={(e) => setDescriptionDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  // Cancel the edit, not the whole dialog.
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingDescription(false);
+                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  saveDescription();
+                }
+              }}
+              disabled={savingDescription}
+              inputProps={{ maxLength: MAX_TASK_DESCRIPTION_LENGTH }}
+            />
+            <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 1, mt: 1 }}>
+              <Button size="small" color="inherit" onClick={() => setEditingDescription(false)} disabled={savingDescription}>
+                Cancel
+              </Button>
+              <Button size="small" variant="contained" onClick={saveDescription} disabled={savingDescription}>
+                {savingDescription ? "Saving..." : "Save"}
+              </Button>
+            </Box>
+          </Box>
+        ) : task.description ? (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            role={canEdit ? "button" : undefined}
+            tabIndex={canEdit ? 0 : undefined}
+            title={canEdit ? "Click to edit" : undefined}
+            aria-label={canEdit ? "Edit description" : undefined}
+            onClick={canEdit ? startEditingDescription : undefined}
+            onKeyDown={
+              canEdit
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      startEditingDescription();
+                    }
+                  }
+                : undefined
+            }
+            sx={{
+              mb: 3,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              borderRadius: 0.5,
+              cursor: canEdit ? "text" : "default",
+              "&:hover": canEdit ? { color: "text.primary" } : undefined,
+              "&:focus-visible": canEdit ? { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 } : undefined,
+            }}
+          >
             {task.description}
           </Typography>
+        ) : (
+          canEdit && (
+            <Button size="small" color="inherit" onClick={startEditingDescription} sx={{ mb: 2.5, ml: -1, color: "text.secondary" }}>
+              Add description
+            </Button>
+          )
         )}
 
         {actionError && (
@@ -400,6 +614,46 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
           )}
         </FormControl>
 
+        {canEdit ? (
+          <Box sx={{ mb: 2.5 }}>
+            <Field
+              type="date"
+              label="Due date"
+              size="small"
+              value={dueDateDraft}
+              onChange={(e) => {
+                setDueDateDraft(e.target.value);
+                setDueDateError("");
+              }}
+              onBlur={commitDueDate}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitDueDate();
+                }
+              }}
+              disabled={savingDueDate}
+              error={!!dueDateError}
+              helperText={dueDateError || undefined}
+              inputProps={{ min: "1900-01-01", max: "2100-12-31" }}
+              InputProps={{
+                endAdornment: savedDueDate ? (
+                  <Button size="small" color="inherit" onClick={clearDueDate} disabled={savingDueDate} sx={{ ml: 1, flexShrink: 0 }}>
+                    Clear
+                  </Button>
+                ) : undefined,
+              }}
+            />
+          </Box>
+        ) : (
+          <Box sx={{ mb: 2.5 }}>
+            <FieldLabel component="div">Due date</FieldLabel>
+            <Typography variant="body2" color={task.dueDate ? "text.primary" : "text.secondary"}>
+              {task.dueDate ? formatDateOnly(task.dueDate, { year: "numeric", month: "short", day: "numeric" }) : "No due date"}
+            </Typography>
+          </Box>
+        )}
+
         <FieldLabel component="div">Color</FieldLabel>
         <Box sx={{ mb: 3 }}>
           <ColorSwatchPicker value={color} onChange={saveColor} disabled={!canEdit} />
@@ -426,7 +680,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
         </Box>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-          {ALLOWED_TYPES_SUMMARY} · up to {MAX_FILE_SIZE_MB}MB per file · {MAX_TOTAL_SIZE_MB}MB total per task
+          {ALLOWED_TYPES_SUMMARY} · up to {MAX_FILE_SIZE_MB}MB per file · {MAX_TOTAL_ATTACHMENTS_SIZE_MB}MB total per task
           {task.attachments.length > 0 && ` · ${task.attachments.length}/${MAX_ATTACHMENTS_PER_TASK} files`}
         </Typography>
 
@@ -515,7 +769,7 @@ export default function TaskDetailDialog({ task, columns, assignableUsers, canEd
         ) : (
           <span />
         )}
-        <Button onClick={onClose} variant="outlined" color="inherit">
+        <Button onClick={handleClose} variant="outlined" color="inherit">
           Close
         </Button>
       </DialogActions>

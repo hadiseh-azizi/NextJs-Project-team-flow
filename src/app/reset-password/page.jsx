@@ -19,8 +19,8 @@ import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
 import { scorePasswordStrength } from "@/lib/passwordStrength";
+import { validatePassword } from "@/lib/passwordPolicy";
 
-const MIN_PASSWORD_LENGTH = 6;
 const STRENGTH_COLORS = ["error", "error", "warning", "info", "success"];
 
 function PasswordField({ label, value, onChange, autoComplete, sx }) {
@@ -55,6 +55,9 @@ function PasswordField({ label, value, onChange, autoComplete, sx }) {
 function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  // Arrives from the verify-email page when the link was opened somewhere
+  // other than the browser that registered — see lib/registrationBinding.js.
+  const fromVerification = searchParams.get("from") === "verification";
   const isMounted = useIsMounted();
 
   const [password, setPassword] = useState("");
@@ -73,8 +76,9 @@ function ResetPasswordForm() {
     if (loading) return;
     setError("");
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    const policy = validatePassword(password);
+    if (policy.error) {
+      setError(policy.error);
       return;
     }
     if (password !== confirmPassword) {
@@ -143,6 +147,12 @@ function ResetPasswordForm() {
       <Typography variant="h5" component="h1" sx={{ mb: 3 }}>
         Choose a new password
       </Typography>
+
+      {fromVerification && (
+        <Alert severity="info" sx={{ mb: 2.5 }}>
+          Your email is verified. Choose a password to finish setting up your account.
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" className="tf-shake" sx={{ mb: 2.5 }}>

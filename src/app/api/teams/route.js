@@ -7,8 +7,8 @@ import { toTeamDTO } from "@/lib/serialize";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
+import { MAX_TEAM_NAME_LENGTH } from "@/lib/fieldLimits";
 
-const MAX_TEAM_NAME_LENGTH = 100;
 
 // Teams the current user manages or is a member of.
 export async function GET() {

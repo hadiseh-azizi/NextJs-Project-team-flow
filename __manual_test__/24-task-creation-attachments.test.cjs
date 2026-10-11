@@ -22,7 +22,7 @@
 require("./register.cjs");
 const { test, summary, assert } = require("./harness.cjs");
 const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
-const { MAX_FILE_SIZE, MAX_TOTAL_ATTACHMENTS_SIZE, MAX_ATTACHMENTS_PER_TASK } = require("../src/lib/attachmentPolicy.js");
+const { MAX_FILE_SIZE, MAX_CREATE_ATTACHMENTS_SIZE, MAX_ATTACHMENTS_PER_TASK } = require("../src/lib/attachmentPolicy.js");
 
 const PROJECT_ID = "111111111111111111111111";
 const COLUMN_ID = "222222222222222222222222";
@@ -204,10 +204,10 @@ function setupMocks({ tasks = [] } = {}) {
     assert.strictEqual(world.committed.size, 0);
   });
 
-  await test("files whose combined size exceeds the per-task total are rejected, no task created", async () => {
+  await test("files whose combined size exceeds the per-request creation total are rejected, no task created", async () => {
     const world = setupMocks();
     const { POST } = require("../src/app/api/tasks/route.js");
-    const half = Math.floor(MAX_TOTAL_ATTACHMENTS_SIZE / 2) + 1024;
+    const half = Math.floor(MAX_CREATE_ATTACHMENTS_SIZE / 2) + 1024; // each file is under MAX_FILE_SIZE; only the sum is over
     const files = [
       fakeFile({ name: "a.png", bytes: pngBytes(half) }),
       fakeFile({ name: "b.png", bytes: pngBytes(half) }),

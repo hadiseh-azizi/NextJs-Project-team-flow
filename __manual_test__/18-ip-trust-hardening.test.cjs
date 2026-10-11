@@ -4,7 +4,7 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 const { makeFakeRateLimitModel } = require("./fakeRateLimitModel.cjs");
 
 // Final Release Cleanup phase — IP-based rate-limit trust and deployment
-// safety (see FINAL_RELEASE_CLEANUP.md). Covers:
+// safety. Covers:
 //   - src/lib/clientIp.js         (RATE_LIMIT_TRUST_PROXY gating, IP shape
 //                                   validation, spoofed/malformed headers)
 //   - src/app/api/auth/register/route.js (the no-ip-fallback bucket that

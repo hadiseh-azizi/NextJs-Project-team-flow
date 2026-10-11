@@ -43,7 +43,9 @@ const VISUALLY_HIDDEN = {
 export default function ProjectCard({ project, index = 0 }) {
   const { mode } = useThemeMode();
   const dark = mode === "dark";
-  const { total, done, pct } = projectProgress(project.tasks);
+  // The list endpoint sends counts (`progress`); a full project DTO with
+  // its tasks still works too.
+  const { total, done, pct } = project.progress ?? projectProgress(project.tasks);
   const projectAccent = projectColorForId(project.id, mode).strong;
   const tab = projectTabForId(project.id, mode);
   const tabGradient = (stops) => `linear-gradient(120deg, ${stops[0]}, ${stops[1]})`;

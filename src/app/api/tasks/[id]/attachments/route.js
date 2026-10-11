@@ -9,7 +9,9 @@ import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { readFormDataWithLimit, PayloadTooLargeError } from "@/lib/limitedFormData";
 import {
   MAX_FILE_SIZE,
+  MAX_FILE_SIZE_MB,
   MAX_TOTAL_ATTACHMENTS_SIZE,
+  MAX_TOTAL_ATTACHMENTS_SIZE_MB,
   MAX_ATTACHMENTS_PER_TASK,
   MAX_UPLOAD_REQUEST_SIZE,
   ALLOWED_TYPES_SUMMARY,
@@ -36,7 +38,7 @@ export async function POST(req, { params }) {
     formData = await readFormDataWithLimit(req, MAX_UPLOAD_REQUEST_SIZE);
   } catch (err) {
     if (err instanceof PayloadTooLargeError) {
-      return NextResponse.json({ error: "File size must not exceed 5MB" }, { status: 413 });
+      return NextResponse.json({ error: `File size must not exceed ${MAX_FILE_SIZE_MB}MB` }, { status: 413 });
     }
     return NextResponse.json({ error: "The upload couldn't be read. Please try again." }, { status: 400 });
   }
@@ -66,7 +68,7 @@ export async function POST(req, { params }) {
     return NextResponse.json({ error: "The selected file is empty" }, { status: 400 });
   }
   if (file.size > MAX_FILE_SIZE) {
-    return NextResponse.json({ error: "File size must not exceed 5MB" }, { status: 400 });
+    return NextResponse.json({ error: `File size must not exceed ${MAX_FILE_SIZE_MB}MB` }, { status: 400 });
   }
   if (task.attachments.length >= MAX_ATTACHMENTS_PER_TASK) {
     return NextResponse.json(
@@ -96,7 +98,7 @@ export async function POST(req, { params }) {
   const currentTotal = task.attachments.reduce((sum, a) => sum + a.size, 0);
   if (currentTotal + file.size > MAX_TOTAL_ATTACHMENTS_SIZE) {
     return NextResponse.json(
-      { error: "This task has reached its total attachment storage limit (8MB). Remove a file before adding another." },
+      { error: `This task has reached its total attachment storage limit (${MAX_TOTAL_ATTACHMENTS_SIZE_MB}MB). Remove a file before adding another.` },
       { status: 400 }
     );
   }

@@ -50,6 +50,18 @@ function VerifyEmailInner() {
       .then(async (data) => {
         if (!isMounted()) return;
 
+        // Opened somewhere other than the browser that registered: the
+        // email is verified but the account's password was discarded (see
+        // api/auth/verify-email), so go choose one on the reset page.
+        if (data?.requiresPasswordSetup) {
+          if (data.passwordResetToken) {
+            router.replace(`/reset-password?from=verification&token=${encodeURIComponent(data.passwordResetToken)}`);
+          } else {
+            router.replace("/forgot-password");
+          }
+          return;
+        }
+
         // The email IS verified at this point no matter what happens
         // next — a missing token or a failed signIn() below is an
         // auto-sign-in problem, not a verification one, and must never

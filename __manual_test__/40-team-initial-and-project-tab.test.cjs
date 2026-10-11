@@ -1,7 +1,10 @@
 // Team-name initial + project tab gradients (UI only).
-// Pure checks on lib/entityColor.js, lib/brand.js and lib/splitName.js, and
-// source checks on components/TeamName.jsx and the cards that the circular team-initial
-// elements are gone from TeamCard and the project tab.
+// Pure checks on lib/entityColor.js and lib/brand.js, and source checks on
+// components/TeamName.jsx and the cards: the circular team-initial elements
+// are gone from TeamCard and the project tab.
+// (lib/splitName.js - a first-letter/rest splitter - no longer exists:
+// TeamName renders the name as a single span, so its tests were removed
+// along with the module rather than restoring it.)
 require("./register.cjs");
 const fs = require("fs");
 const path = require("path");
@@ -9,7 +12,6 @@ const { test, summary, assert } = require("./harness.cjs");
 
 const { projectTabForId } = require("../src/lib/entityColor.js");
 const { contrastRatio, readableInk, BRAND } = require("../src/lib/brand.js");
-const { splitFirstChar } = require("../src/lib/splitName.js");
 
 const read = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 const ids = Array.from({ length: 400 }, (_, i) => `project-${i}`);
@@ -59,26 +61,12 @@ async function run() {
     assert.notStrictEqual(t.rest[1], t.hover[1]);
   });
 
-  await test("splitFirstChar: first letter vs rest, name reads the same when rejoined", () => {
-    assert.deepStrictEqual(splitFirstChar("Development Team"), { first: "D", rest: "evelopment Team" });
-    assert.deepStrictEqual(splitFirstChar("Marketing"), { first: "M", rest: "arketing" });
-    assert.deepStrictEqual(splitFirstChar("Q"), { first: "Q", rest: "" });
-    const s = splitFirstChar("Éclair Ops");
-    assert.strictEqual(s.first + s.rest, "Éclair Ops");
-  });
-
-  await test("splitFirstChar: surrogate-pair, empty and missing names", () => {
-    assert.deepStrictEqual(splitFirstChar("\u{1F680}Launch"), { first: "\u{1F680}", rest: "Launch" });
-    assert.deepStrictEqual(splitFirstChar(""), { first: "", rest: "" });
-    assert.deepStrictEqual(splitFirstChar(undefined), { first: "", rest: "" });
-    assert.deepStrictEqual(splitFirstChar(null), { first: "", rest: "" });
-  });
-
-  await test("TeamName: the letter is an inline span inside the name's own text, larger than the rest, gradient only on the letter", () => {
+  await test("TeamName: one inline span carrying the name, sized via `scale`, gradient text only when an accent is given", () => {
     const src = read("src/components/TeamName.jsx");
     assert.match(src, /component="span"/);
     assert.match(src, /fontSize: `\$\{scale\}em`/);
-    assert.match(src, /\{first\}[\s\S]*\{rest\}/);
+    assert.match(src, /\{name\}/);
+    assert.ok(!/splitFirstChar|splitName/.test(src), "TeamName must not depend on the removed splitName module");
     assert.match(src, /backgroundClip: "text"/);
     assert.ok(!/#[0-9A-Fa-f]{6}/.test(src), "no hex literals in TeamName; colors come from lib/brand");
   });
@@ -91,10 +79,10 @@ async function run() {
     assert.match(src, /borderRadius: "50%"/, "the team card itself stays circular (locked decision)");
   });
 
-  await test("ProjectCard: no team-initial element; tab is a gradient fill at top-left with the team name", () => {
+  await test("ProjectCard: no team-initial element; tab is a gradient fill at top-left showing the team name as plain text", () => {
     const src = read("src/components/ProjectCard.jsx");
     assert.ok(!src.includes("avatarInitial(project.team"), "team initial badge present");
-    assert.match(src, /<TeamName name=\{project\.team\.name\}/);
+    assert.match(src, /\{project\.team\.name\}/);
     assert.match(src, /projectTabForId\(project\.id/);
     assert.match(src, /backgroundImage: tabGradient\(tab\.rest\)/);
     assert.ok(!src.includes("inset 0 2px 0"), "old top-line-only tab accent still present");

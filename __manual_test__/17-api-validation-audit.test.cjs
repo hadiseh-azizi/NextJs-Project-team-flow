@@ -2,10 +2,10 @@ require("./register.cjs");
 const { test, summary, assert } = require("./harness.cjs");
 const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 
-// Covers this phase's audit (API_VALIDATION_AUDIT.md): input validation,
+// Covers this phase's audit: input validation,
 // error handling, and data-shape robustness across every route handler.
 // Almost everything the audit's 20-point checklist calls for was already
-// in place from prior phases (see CHANGELOG.md) — this file targets the
+// in place from prior phases — this file targets the
 // three confirmed gaps this pass actually found and fixed, plus a few
 // route-level spot checks for edge cases not already exercised by
 // 08-authz-and-validation.test.cjs (which covers the pure validators in

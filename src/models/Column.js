@@ -1,4 +1,6 @@
 import { Schema, model, models } from "mongoose";
+import { MAX_COLUMN_NAME_LENGTH } from "@/lib/fieldLimits";
+import { textLimit } from "@/lib/schemaLimits";
 
 // A Column (a.k.a. "list") is entirely user-defined — people decide how many
 // columns a board has and what they're called. All columns are equal: none
@@ -7,11 +9,13 @@ import { Schema, model, models } from "mongoose";
 // Older documents may still carry a stored `isDoneColumn` field; it is no
 // longer part of the schema, so it is never read, returned or written.
 const ColumnSchema = new Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, validate: textLimit("name", MAX_COLUMN_NAME_LENGTH) },
   project: { type: Schema.Types.ObjectId, ref: "Project", required: true },
   order: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now },
-});
+},
+// updatedAt only; see models/Project.js.
+{ timestamps: { createdAt: false, updatedAt: true } });
 
 // Enforces the invariant that ordering logic elsewhere assumes but never
 // checked: no two columns in the same project share an `order` value.

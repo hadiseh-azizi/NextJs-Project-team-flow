@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import Team from "@/models/Team";
@@ -7,23 +6,17 @@ import Invitation from "@/models/Invitation";
 import { createVerificationToken } from "@/lib/verificationToken";
 import { sendVerificationEmail } from "@/lib/email";
 import { normalizeEmail } from "@/lib/normalizeEmail";
+import { isValidEmail } from "@/lib/emailValidation";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/clientIp";
 import { withOptionalTransaction } from "@/lib/mongoTransaction";
+import { validatePassword } from "@/lib/passwordPolicy";
+import { hashPassword } from "@/lib/passwordHash";
+import { createRegistrationBinding, REGISTRATION_BINDING_COOKIE, registrationBindingCookieOptions } from "@/lib/registrationBinding";
 
-// Loose but real email shape check — not full RFC 5322, just enough to
-// reject obviously-malformed input before it reaches the database.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_NAME_LENGTH = 100;
-const MAX_EMAIL_LENGTH = 254;
-// bcrypt silently truncates at 72 bytes, so anything longer doesn't add
-// real strength and would just be misleading to accept.
-const MAX_PASSWORD_LENGTH = 72;
-// bcrypt's own recommended minimum as of this writing; also matches the
-// dummy hash used for timing-safe login in lib/auth.js.
-const BCRYPT_COST = 12;
 
 // Registration has no per-account identity to key a limit on until after
 // it succeeds, so this is IP-only. It also doubles as the mitigation for
@@ -46,7 +39,7 @@ const REGISTER_IP_LIMIT = { max: 10, windowMs: 60 * 60 * 1000 };
 // registrations from different untrackable clients being able to
 // collide into the same bucket. That trade-off only matters on a
 // deployment where the real per-client IP genuinely can't be
-// determined — see FINAL_RELEASE_CLEANUP.md.
+// determined (covered by __manual_test__/18-ip-trust-hardening.test.cjs).
 const REGISTER_FALLBACK_LIMIT = { max: 100, windowMs: 60 * 60 * 1000 };
 
 export async function POST(req) {
@@ -82,20 +75,20 @@ export async function POST(req) {
   if (trimmedName.length > MAX_NAME_LENGTH) {
     return NextResponse.json({ error: "Name is too long" }, { status: 400 });
   }
-  if (normalizedEmail.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(normalizedEmail)) {
+  if (!isValidEmail(normalizedEmail)) {
     return NextResponse.json({ error: "Please enter a valid email address" }, { status: 400 });
   }
-  if (password.length < 6) {
-    return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return NextResponse.json({ error: "Password is too long" }, { status: 400 });
+  // Same policy as password reset and login — see lib/passwordPolicy.js
+  // (length is checked in UTF-8 bytes because that is what bcrypt reads).
+  const passwordResult = validatePassword(password);
+  if (passwordResult.error) {
+    return NextResponse.json({ error: passwordResult.error }, { status: 400 });
   }
 
   await connectDB();
 
-  // Deliberately still discloses that the address is taken (see
-  // AUTH_SECURITY_AUDIT.md, "Account enumeration" — kept as-is rather
+  // Deliberately still discloses that the address is taken (a known
+  // account-enumeration trade-off — kept as-is rather
   // than silently accepting a duplicate signup or sending a "someone
   // tried to register your email" notice instead, both of which are
   // worse UX for a negligible enumeration-risk reduction). The IP rate
@@ -106,7 +99,7 @@ export async function POST(req) {
     return NextResponse.json({ error: "This email is already registered" }, { status: 409 });
   }
 
-  const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+  const passwordHash = await hashPassword(password);
 
   return withMongoErrorHandling(async () => {
     // User creation and invitation consumption must succeed or fail
@@ -185,13 +178,23 @@ export async function POST(req) {
     // turn an already-successful registration into a 500 (the client would
     // see a failure for an account that actually exists, and "resend
     // verification" already covers getting them a working link).
-    const token = createVerificationToken(String(user._id), user.email, user.tokenVersion);
+    //
+    // The token carries a hash of a secret that is also handed to *this*
+    // browser as a cookie below, tying the link to whoever registered —
+    // see lib/registrationBinding.js (M1, account pre-hijacking).
+    const binding = createRegistrationBinding();
+    const token = createVerificationToken(String(user._id), user.email, user.tokenVersion, binding.hash);
     try {
       await sendVerificationEmail({ to: user.email, name: user.name, token });
     } catch (err) {
       console.error("[auth/register] Failed to send verification email:", err);
     }
 
-    return NextResponse.json({ id: String(user._id), email: user.email, requiresVerification: true }, { status: 201 });
+    const response = NextResponse.json(
+      { id: String(user._id), email: user.email, requiresVerification: true },
+      { status: 201 }
+    );
+    response.cookies.set(REGISTRATION_BINDING_COOKIE, binding.secret, registrationBindingCookieOptions());
+    return response;
   });
 }

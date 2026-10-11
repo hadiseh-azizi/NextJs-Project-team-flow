@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { verifyVerificationToken } from "@/lib/verificationToken";
@@ -6,6 +7,10 @@ import { normalizeEmail } from "@/lib/normalizeEmail";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { isValidObjectId } from "@/lib/objectId";
 import { createAutoLoginToken } from "@/lib/autoLoginToken";
+import { createPasswordResetToken } from "@/lib/passwordResetToken";
+import { bindingMatches } from "@/lib/registrationBinding";
+import { hashPassword } from "@/lib/passwordHash";
+import { invalidateSessionCache } from "@/lib/sessionRevocationCache";
 
 function invalidTokenResponse() {
   return NextResponse.json({ error: "This verification link is invalid or has expired" }, { status: 400 });
@@ -36,6 +41,24 @@ export async function POST(req) {
 
   const tokenEmail = normalizeEmail(payload.email);
 
+  // M1 (account pre-hijacking) — see lib/registrationBinding.js for the
+  // full reasoning. Did this link come back to the browser that registered
+  // the account? Only then is it safe to treat the password on the account
+  // as chosen by the person completing verification.
+  const sameBrowserAsRegistration = bindingMatches(req.headers, payload.bind);
+
+  // Otherwise the person completing verification has proven they own the
+  // inbox, but the password on the account may have been set by someone
+  // who registered *their* address. That password is discarded in the same
+  // atomic write that marks the email verified — replaced by a hash of
+  // random bytes nobody knows — so there is never a moment where the
+  // account is verified and the pre-registrant's password still works.
+  // (Hashed rather than a fixed marker string so a login attempt against
+  // this account takes as long as against any other.)
+  const replacementPasswordHash = sameBrowserAsRegistration
+    ? null
+    : await hashPassword(crypto.randomBytes(32).toString("hex"));
+
   // A single atomic find-and-update, rather than a separate findById +
   // manual field checks + save(): the lookup (matching on id, current
   // email, and current tokenVersion all at once) and the mutation
@@ -55,7 +78,12 @@ export async function POST(req) {
   // through to the generic invalid-token response below.
   const user = await User.findOneAndUpdate(
     { _id: payload.userId, email: tokenEmail, tokenVersion: payload.tokenVersion },
-    { $set: { emailVerified: true }, $inc: { tokenVersion: 1 } }
+    {
+      $set: replacementPasswordHash
+        ? { emailVerified: true, passwordHash: replacementPasswordHash }
+        : { emailVerified: true },
+      $inc: { tokenVersion: 1 },
+    }
   );
 
   // Deliberately the same generic message for every failure mode here —
@@ -65,6 +93,26 @@ export async function POST(req) {
   // accounts.
   if (!user) {
     return invalidTokenResponse();
+  }
+
+  // H1: tokenVersion was just bumped; drop any cached copy of the old one.
+  invalidateSessionCache(payload.userId);
+
+  // Different browser (or no binding): no automatic sign-in. Hand back a
+  // one-time password-setup token instead — it is the existing
+  // password-reset token (single-use, 1 hour, hashed at rest), redeemed on
+  // the existing reset-password page, so the person picks their own
+  // password and then signs in normally. Best-effort like the auto-login
+  // token below: if issuing it fails the email is still verified and
+  // "Forgot password" reaches the same place.
+  if (replacementPasswordHash) {
+    let passwordResetToken = null;
+    try {
+      passwordResetToken = await createPasswordResetToken(user._id);
+    } catch (err) {
+      console.error("[auth/verify-email] Failed to create password setup token:", err);
+    }
+    return NextResponse.json({ ok: true, requiresPasswordSetup: true, passwordResetToken });
   }
 
   // Verification has already succeeded and is committed above — a

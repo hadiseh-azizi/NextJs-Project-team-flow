@@ -1,3 +1,36 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Next.js build output and generated files
 .next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Environment files: real values never go in git. Only .env.example is tracked.
 .env
+.env.*
+!.env.example
+
+# Deployment metadata (Vercel CLI writes project and org ids here)
+.vercel
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Tool caches and test output
+.eslintcache
+coverage
+
+# Local certificates and keys
+*.pem
+
+# OS files
+.DS_Store
+Thumbs.db

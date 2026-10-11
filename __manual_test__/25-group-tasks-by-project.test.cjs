@@ -1,4 +1,4 @@
-// Separate Open/Closed Tasks by Project — see CHANGELOG.md.
+// Separate Open/Closed Tasks by Project.
 //
 // `groupByProject` is a plain-JS helper (no React, no Mongoose), so unlike
 // the OverviewStats component it lives in it can be exercised directly

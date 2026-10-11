@@ -39,6 +39,13 @@ function makeFakeTokenModel() {
       store.set(doc.tokenHash, created);
       return created;
     },
+    // Read-only existence check (peekPasswordResetToken).
+    findOne(filter) {
+      const doc = store.get(filter.tokenHash);
+      const live = doc && !(filter.expiresAt?.$gt && !(doc.expiresAt > filter.expiresAt.$gt));
+      const q = { select: () => q, lean: async () => (live ? { ...doc } : null) };
+      return q;
+    },
     async findOneAndDelete(filter) {
       const doc = store.get(filter.tokenHash);
       if (!doc) return null;
@@ -81,6 +88,9 @@ function setup({ users = [USER], sendImpl, tokenModel } = {}) {
   const userModel = makeFakeUserModel(users);
   mockModule("@/models/User", userModel);
   mockModule("bcryptjs", bcryptFake);
+  // No live MongoDB here: run the transaction callback without a session
+  // (the helper's own standalone fallback path).
+  mockModule("@/lib/mongoTransaction", { withOptionalTransaction: async (fn) => fn(null) });
   const sent = [];
   mockModule("@/lib/email", {
     sendPasswordResetEmail: async (args) => {

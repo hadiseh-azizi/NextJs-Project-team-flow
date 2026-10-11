@@ -77,6 +77,16 @@ function makeFakeRateLimitModel() {
       store.set(key, updated);
       return { ...updated };
     },
+    // Read-only lookup used by rateLimit.js's "already limited? skip the
+    // write" pre-check. Returns the chainable shape `.lean()` expects.
+    findOne(filter) {
+      const doc = store.get(filter.key);
+      return { lean: async () => (doc ? { ...doc } : null) };
+    },
+    async deleteOne(filter) {
+      const had = store.delete(filter.key);
+      return { deletedCount: had ? 1 : 0 };
+    },
     __store: store,
     __forceDuplicateOnce: (key) => duplicateOnce.add(key),
     __forceError: (err) => {

@@ -8,14 +8,24 @@ import { toColumnDTO } from "@/lib/serialize";
 import { getAccessibleProject, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
-import { validateRequiredString, validateInteger } from "@/lib/validation";
+import { validateRequiredString } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { withOptionalTransaction } from "@/lib/mongoTransaction";
+import { MAX_COLUMN_NAME_LENGTH } from "@/lib/fieldLimits";
 
-const MAX_COLUMN_NAME_LENGTH = 60;
 
-// Rename or reorder a column. (Columns have no special meaning — in
-// particular none is a "completed" column; completion lives on the task.)
+// Rename a column. (Columns have no special meaning — in particular none
+// is a "completed" column; completion lives on the task.)
+//
+// Position is deliberately NOT editable here. Column `order` values are
+// only ever written by (a) column creation (max + 1, retried on a
+// duplicate-key error) and (b) PATCH .../columns/order, which rewrites the
+// whole sequence to 0..n-1 in one transaction. A raw per-column `order`
+// written from this route could collide with a sibling under the unique
+// (project, order) index (a 500/409 for the caller) or leave the sequence
+// with gaps, and it bypasses the "whole board at once" check the reorder
+// endpoint performs. Callers that send `order` get a 400 that says where to
+// go instead of having the value silently dropped.
 export async function PATCH(req, { params }) {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -48,14 +58,15 @@ export async function PATCH(req, { params }) {
     updateFields.name = nameResult.value;
   }
   if (body.order !== undefined) {
-    const orderResult = validateInteger(body.order, { field: "Order", min: 0 });
-    if (orderResult.error) return NextResponse.json({ error: orderResult.error }, { status: 400 });
-    updateFields.order = orderResult.value;
+    return NextResponse.json(
+      { error: "Column order can't be changed here. Use PATCH /api/projects/{id}/columns/order to reorder columns." },
+      { status: 400 }
+    );
   }
 
   return withMongoErrorHandling(async () => {
-    // Columns are all equal: renaming/reordering touches this one document
-    // and nothing else. (There is no "done" flag to keep unique across the
+    // Columns are all equal: renaming touches this one document and
+    // nothing else. (There is no "done" flag to keep unique across the
     // project any more, so no multi-document transaction is needed.)
     const updated = await Column.findOneAndUpdate(
       { _id: columnId, project: id },

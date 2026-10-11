@@ -31,24 +31,62 @@ import RateLimitAttempt from "@/models/RateLimitAttempt";
 // an attacker running hundreds or thousands of automated attempts, which
 // is the actual threat model here.
 //
-// Returns { limited, remaining, retryAfterMs }. Fails OPEN (never blocks
-// a request) if the rate-limit check itself errors out (e.g. a transient
-// DB blip) — a broken limiter should degrade to "no extra protection",
-// not take down login/registration/resend entirely.
-export async function checkRateLimit(key, { max, windowMs }) {
+// Returns { limited, remaining, retryAfterMs, unavailable }.
+//
+// By default it fails OPEN (never blocks a request) if the rate-limit check
+// itself errors out (e.g. a transient DB blip) — a broken limiter should
+// degrade to "no extra protection", not take down login/registration/resend
+// entirely. That default is deliberate for the account flows, which have
+// other identities (email, token) enforcing limits of their own.
+//
+// A caller whose limiter is the ONLY protection on an unauthenticated route
+// (the public shared board) passes `failClosed: true`. When the check cannot
+// be completed it then gets `{ limited: true, unavailable: true }` — the
+// request is not allowed through unmetered, and `unavailable` lets the route
+// answer 503 ("try again shortly") instead of a 429 that would wrongly say
+// the caller did something wrong. Only the outcome of the limiter's own
+// check changes; the counting logic below is identical for both modes.
+const UNAVAILABLE_RETRY_MS = 5000;
+
+export async function checkRateLimit(key, { max, windowMs, failClosed = false }) {
   if (!key || !Number.isFinite(max) || max < 1 || !Number.isFinite(windowMs) || windowMs < 1) {
     throw new Error("checkRateLimit: invalid key/max/windowMs");
   }
 
+  const onLimiterFailure = (what, err) => {
+    if (failClosed) {
+      console.error(`[rateLimit] ${what}, failing closed:`, err);
+      return { limited: true, unavailable: true, remaining: 0, retryAfterMs: UNAVAILABLE_RETRY_MS };
+    }
+    console.error(`[rateLimit] ${what}, failing open:`, err);
+    return { limited: false, remaining: max, retryAfterMs: 0 };
+  };
+
   try {
     await connectDB();
   } catch (err) {
-    console.error("[rateLimit] connectDB failed, failing open:", err);
-    return { limited: false, remaining: max, retryAfterMs: 0 };
+    return onLimiterFailure("connectDB failed", err);
   }
 
   const now = new Date();
   const windowEnd = new Date(now.getTime() + windowMs);
+
+  // L2: a key that is already over its limit for the current window stays
+  // limited until `expiresAt`, so there is nothing left to record. Looking
+  // first means a flood of rejected requests costs a read instead of a
+  // write per request (and cannot keep rewriting a document). The count
+  // only ever grows inside a window, so this can't turn a limited caller
+  // into an unlimited one; if the read fails we just fall through to the
+  // normal atomic increment below. The increment stays the single source
+  // of truth for requests that are not yet limited.
+  try {
+    const current = await RateLimitAttempt.findOne({ key }, { count: 1, expiresAt: 1 }).lean();
+    if (current && current.expiresAt && current.expiresAt.getTime() > now.getTime() && current.count >= max) {
+      return { limited: true, remaining: 0, retryAfterMs: Math.max(0, current.expiresAt.getTime() - now.getTime()) };
+    }
+  } catch (err) {
+    console.error("[rateLimit] pre-check failed, continuing:", err);
+  }
 
   // Aggregation-pipeline update: if the stored window has already
   // expired (or this is a brand-new key), reset to count 1 with a fresh
@@ -82,16 +120,29 @@ export async function checkRateLimit(key, { max, windowMs }) {
       try {
         doc = await RateLimitAttempt.findOneAndUpdate({ key }, pipeline, options);
       } catch (retryErr) {
-        console.error("[rateLimit] retry after duplicate key failed, failing open:", retryErr);
-        return { limited: false, remaining: max, retryAfterMs: 0 };
+        return onLimiterFailure("retry after duplicate key failed", retryErr);
       }
     } else {
-      console.error("[rateLimit] check failed, failing open:", err);
-      return { limited: false, remaining: max, retryAfterMs: 0 };
+      return onLimiterFailure("check failed", err);
     }
   }
 
   const limited = doc.count > max;
   const retryAfterMs = limited ? Math.max(0, doc.expiresAt.getTime() - now.getTime()) : 0;
-  return { limited, remaining: Math.max(0, max - doc.count), retryAfterMs };
+  return { limited, remaining: Math.max(0, max - doc.count), retryAfterMs, unavailable: false };
+}
+
+// Clears a counter outright. Used for "failed attempts" style counters
+// (see the per-email-and-IP login key in lib/auth.js) so a successful
+// sign-in doesn't leave the legitimate user's earlier typos counting
+// against them. Best-effort: if it fails the counter simply expires on
+// its own window, which is the safe direction.
+export async function resetRateLimit(key) {
+  if (!key) return;
+  try {
+    await connectDB();
+    await RateLimitAttempt.deleteOne({ key });
+  } catch (err) {
+    console.error("[rateLimit] reset failed:", err);
+  }
 }

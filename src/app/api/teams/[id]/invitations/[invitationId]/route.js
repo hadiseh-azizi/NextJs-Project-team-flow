@@ -23,8 +23,8 @@ export async function DELETE(req, { params }) {
   await connectDB();
 
   const team = await Team.findById(id).lean();
-  if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
-  if (!isTeamManager(team, userId)) {
+  // L4: same response whether the team is missing or just not yours.
+  if (!team || !isTeamManager(team, userId)) {
     return NextResponse.json({ error: "Only the team manager can cancel invitations" }, { status: 403 });
   }
 

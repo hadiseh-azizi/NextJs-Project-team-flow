@@ -99,7 +99,13 @@ export default function SharedBoardPage() {
   // worker exists. See public/sw.js for what it actually caches.
   useEffect(() => {
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
+      // The build id in the URL is what versions the worker's cache (see
+      // public/sw.js): a new deployment registers a new script URL, which
+      // installs the update and clears the previous build's cache.
+      // updateViaCache "none" makes the browser revalidate sw.js itself
+      // rather than trust an HTTP-cached copy.
+      const buildId = encodeURIComponent(process.env.NEXT_PUBLIC_BUILD_ID || "dev");
+      navigator.serviceWorker.register(`/sw.js?v=${buildId}`, { updateViaCache: "none" }).catch(() => {
         // A blocked/unsupported registration just means no offline app
         // shell — the board-data caching above still works independently.
       });
@@ -194,6 +200,16 @@ export default function SharedBoardPage() {
             {loadError && (
               <Alert severity="warning" sx={{ mb: 2 }}>
                 {loadError}
+              </Alert>
+            )}
+
+            {board.limits?.truncated && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                This board is larger than the shared view can show: {board.limits.tasks.shown} of {board.limits.tasks.total} tasks
+                {board.limits.columns.shown < board.limits.columns.total
+                  ? ` and ${board.limits.columns.shown} of ${board.limits.columns.total} columns`
+                  : ""}{" "}
+                are displayed, in board order. The progress figure counts every task.
               </Alert>
             )}
 

@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
-import { consumePasswordResetToken } from "@/lib/passwordResetToken";
+import { takePasswordResetToken, peekPasswordResetToken, restorePasswordResetToken } from "@/lib/passwordResetToken";
+import { withOptionalTransaction } from "@/lib/mongoTransaction";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { getClientIp } from "@/lib/clientIp";
+import { validatePassword } from "@/lib/passwordPolicy";
+import { hashPassword } from "@/lib/passwordHash";
+import { invalidateSessionCache } from "@/lib/sessionRevocationCache";
 
-// Same bounds as registration (register/route.js) — bcrypt silently
-// truncates at 72 bytes, and this is the same password field with the same
-// requirements, just being set a different way.
-const MIN_PASSWORD_LENGTH = 6;
-const MAX_PASSWORD_LENGTH = 72;
-const BCRYPT_COST = 12;
+// Password rules live in lib/passwordPolicy.js, shared with registration
+// and login, so reset can never accept something registration wouldn't.
 
 // The reset token itself is 256 bits of randomness — not brute-forceable —
 // so, same reasoning as AUTO_LOGIN_IP_LIMIT in lib/auth.js, this exists
@@ -58,38 +57,61 @@ export async function POST(req) {
   if (password !== confirmPassword) {
     return NextResponse.json({ error: "Passwords do not match" }, { status: 400 });
   }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return NextResponse.json({ error: `Password must be at least ${MIN_PASSWORD_LENGTH} characters` }, { status: 400 });
-  }
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return NextResponse.json({ error: "Password is too long" }, { status: 400 });
+  const passwordResult = validatePassword(password);
+  if (passwordResult.error) {
+    return NextResponse.json({ error: passwordResult.error }, { status: 400 });
   }
 
   await connectDB();
 
-  // Single-use and atomic: of any number of concurrent requests carrying
-  // the same token (including a genuine replay of an already-used link),
-  // at most one can ever get a userId back — see
-  // lib/passwordResetToken.js. Every failure mode (missing, malformed,
-  // expired, already-used token) is deliberately indistinguishable here.
-  const userId = await consumePasswordResetToken(token);
-  if (!userId) {
+  // L7: nothing irreversible happens until the new password is stored.
+  //   1. Cheap read-only check, so junk tokens never cost a bcrypt hash.
+  //   2. Hash the password (the slow step, kept outside the transaction).
+  //   3. In ONE transaction: delete the token (atomic find-and-delete, so
+  //      of any number of concurrent submissions at most one gets it) and
+  //      write the password. If hashing, the delete or the write fails, the
+  //      transaction aborts and the token is still valid for a retry.
+  // Every failure to find a usable token gives the same generic response.
+  if (!(await peekPasswordResetToken(token))) {
     return invalidTokenResponse();
   }
 
   return withMongoErrorHandling(async () => {
-    const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+    const passwordHash = await hashPassword(password);
 
-    // The token is already consumed above regardless of what happens next,
-    // so a user deleted between the reset request and this submission
-    // (an edge case, not a normal flow) still gets the same generic
-    // response as any other invalid token — it doesn't leak that the
-    // account no longer exists.
-    const user = await User.findByIdAndUpdate(userId, { $set: { passwordHash } });
-    if (!user) {
-      return invalidTokenResponse();
-    }
+    let resetUserId = null;
+    const outcome = await withOptionalTransaction(async (session) => {
+      const consumed = await takePasswordResetToken(token, { session });
+      if (!consumed) return "invalid";
+      resetUserId = consumed.userId;
 
-    return NextResponse.json({ ok: true });
+      // M2: bumping tokenVersion revokes every session issued before this
+      // reset (auth.js's jwt callback compares it on every request) and
+      // retires any verification link emailed before it.
+      let user;
+      try {
+        user = await User.findByIdAndUpdate(
+          consumed.userId,
+          { $set: { passwordHash }, $inc: { tokenVersion: 1 } },
+          session ? { session } : undefined
+        );
+      } catch (err) {
+        // With a transaction the abort already restores the token. Without
+        // one (standalone MongoDB) it has to be put back by hand.
+        if (!session) await restorePasswordResetToken(consumed);
+        throw err;
+      }
+      // A user deleted since the link was requested: the token is spent
+      // and the response is the same generic one, so it doesn't reveal
+      // that the account no longer exists.
+      return user ? "ok" : "invalid";
+    });
+
+    // H1: the version bump above is what revokes older sessions; drop this
+    // process's cached copy now that it has committed, so revocation here is
+    // immediate rather than waiting out the cache TTL.
+    if (outcome === "ok") invalidateSessionCache(resetUserId);
+
+    return outcome === "ok" ? NextResponse.json({ ok: true }) : invalidTokenResponse();
   });
 }

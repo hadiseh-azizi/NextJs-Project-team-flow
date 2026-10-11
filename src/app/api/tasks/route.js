@@ -6,16 +6,19 @@ import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
 import { getAccessibleProject, validateAssignees, canEditProject } from "@/lib/authz";
-import { isValidObjectId } from "@/lib/objectId";
+import { isValidObjectId, normalizeObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString, validateOptionalString, validateOptionalDate, validateOptionalEnumValue } from "@/lib/validation";
 import { TASK_COLORS } from "@/lib/taskColors";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { nextOrderForNewTask, withOptionalTransaction } from "@/lib/taskOrdering";
 import { readFormDataWithLimit, PayloadTooLargeError } from "@/lib/limitedFormData";
+import { MAX_TASK_TITLE_LENGTH, MAX_TASK_DESCRIPTION_LENGTH } from "@/lib/fieldLimits";
 import {
   MAX_FILE_SIZE,
-  MAX_TOTAL_ATTACHMENTS_SIZE,
+  MAX_FILE_SIZE_MB,
+  MAX_CREATE_ATTACHMENTS_SIZE,
+  MAX_CREATE_ATTACHMENTS_SIZE_MB,
   MAX_ATTACHMENTS_PER_TASK,
   MAX_CREATE_UPLOAD_REQUEST_SIZE,
   ALLOWED_TYPES_SUMMARY,
@@ -24,8 +27,6 @@ import {
   validateAttachmentFile,
 } from "@/lib/attachmentPolicy";
 
-const MAX_TASK_TITLE_LENGTH = 200;
-const MAX_TASK_DESCRIPTION_LENGTH = 5000;
 const TASK_COLOR_KEYS = TASK_COLORS.map((c) => c.key);
 
 // Task creation accepts either a plain JSON body (the original, still-
@@ -54,7 +55,10 @@ export async function POST(req) {
       formData = await readFormDataWithLimit(req, MAX_CREATE_UPLOAD_REQUEST_SIZE);
     } catch (err) {
       if (err instanceof PayloadTooLargeError) {
-        return NextResponse.json({ error: "The attached files are too large" }, { status: 413 });
+        return NextResponse.json(
+          { error: `The attached files are too large. Attach up to ${MAX_CREATE_ATTACHMENTS_SIZE_MB}MB at creation; more can be added after the task is created.` },
+          { status: 413 }
+        );
       }
       return NextResponse.json({ error: "The upload couldn't be read. Please try again." }, { status: 400 });
     }
@@ -76,7 +80,10 @@ export async function POST(req) {
     if (!body) return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { projectId, columnId, assigneeIds } = body;
+  const { assigneeIds } = body;
+  // Canonical (lower-case) ids: later code compares them as strings.
+  const projectId = normalizeObjectId(body.projectId);
+  const columnId = normalizeObjectId(body.columnId);
 
   const titleResult = validateRequiredString(body.title, { field: "Task title", maxLength: MAX_TASK_TITLE_LENGTH });
   if (titleResult.error) return NextResponse.json({ error: titleResult.error }, { status: 400 });
@@ -99,9 +106,11 @@ export async function POST(req) {
 
   // Attachments selected at creation time go through the exact same
   // per-file checks (size, extension/MIME pairing, magic-byte signature)
-  // and the same running-total/count caps as the post-creation upload
-  // route (see app/api/tasks/[id]/attachments/route.js) — just evaluated
-  // against 0 pre-existing attachments, since the task doesn't exist yet.
+  // and the same count cap as the post-creation upload route (see
+  // app/api/tasks/[id]/attachments/route.js). The running total is held to
+  // MAX_CREATE_ATTACHMENTS_SIZE rather than the per-task storage total,
+  // because here every file is in the same request body and the sum has
+  // to fit under the deployment platform's request-size limit.
   // Validated in full before anything touches the database, same as the
   // field validation above, so a bad file never leaves behind a task.
   if (incomingFiles.length > MAX_ATTACHMENTS_PER_TASK) {
@@ -118,12 +127,14 @@ export async function POST(req) {
       return NextResponse.json({ error: `"${file.name}" is empty` }, { status: 400 });
     }
     if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: `"${file.name}" is larger than the allowed 5MB per file` }, { status: 400 });
+      return NextResponse.json({ error: `"${file.name}" is larger than the allowed ${MAX_FILE_SIZE_MB}MB per file` }, { status: 400 });
     }
     runningTotal += file.size;
-    if (runningTotal > MAX_TOTAL_ATTACHMENTS_SIZE) {
+    if (runningTotal > MAX_CREATE_ATTACHMENTS_SIZE) {
       return NextResponse.json(
-        { error: "The selected files exceed the 8MB total attachment limit for a task" },
+        {
+          error: `The selected files exceed the ${MAX_CREATE_ATTACHMENTS_SIZE_MB}MB limit for one request. Attach fewer files now and add the rest after the task is created.`,
+        },
         { status: 400 }
       );
     }

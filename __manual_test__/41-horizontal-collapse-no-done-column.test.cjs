@@ -3,8 +3,8 @@ const fs = require("fs");
 const path = require("path");
 const { test, summary, assert } = require("./harness.cjs");
 
-// Two scoped changes, checked at source level (no browser is available —
-// layout and animation are in the manual matrix in CHANGELOG.md):
+// Two scoped changes, checked at source level (no browser is available, so
+// layout and animation themselves are not covered):
 //   1. Collapsed columns shrink horizontally; the title stays horizontal.
 //   2. No column is a special "Completed/Done" column; completion is the
 //      task's own flag and moving/collapsing never touches it.

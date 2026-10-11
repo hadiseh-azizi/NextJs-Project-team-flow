@@ -1,10 +1,15 @@
 import { Schema, model, models } from "mongoose";
-import { MAX_ATTACHMENTS_PER_TASK, MAX_FILE_SIZE, MAX_TOTAL_ATTACHMENTS_SIZE } from "@/lib/attachmentPolicy";
+import { MAX_TASK_TITLE_LENGTH, MAX_TASK_DESCRIPTION_LENGTH } from "@/lib/fieldLimits";
+import { textLimit } from "@/lib/schemaLimits";
+import { MAX_ATTACHMENTS_PER_TASK, MAX_STORED_FILE_SIZE, MAX_TOTAL_ATTACHMENTS_SIZE } from "@/lib/attachmentPolicy";
 
 // Attachments are stored inline as base64 — no external file storage needed,
 // so the app works the same in local dev and in a serverless deployment.
 // Kept small on purpose (see the size/count caps in lib/attachmentPolicy.js,
-// enforced in the upload route). The constraints below are a second,
+// enforced in the upload routes; the per-file cap also keeps every upload
+// under the deployment platform's request-body limit). The `size` max below
+// is the looser MAX_STORED_FILE_SIZE so files stored under the previous
+// limit keep validating when their task is saved. The constraints below are a second,
 // schema-level line of defense — the route is what actually sanitizes and
 // validates an upload, but a required/bounded field here means no code
 // path (present or future) can silently write an attachment that skips
@@ -12,14 +17,14 @@ import { MAX_ATTACHMENTS_PER_TASK, MAX_FILE_SIZE, MAX_TOTAL_ATTACHMENTS_SIZE } f
 const AttachmentSchema = new Schema({
   filename: { type: String, required: true, trim: true, maxlength: 150 },
   mimeType: { type: String, required: true, trim: true, maxlength: 100 },
-  size: { type: Number, required: true, min: 0, max: MAX_FILE_SIZE },
+  size: { type: Number, required: true, min: 0, max: MAX_STORED_FILE_SIZE },
   data: { type: String, required: true }, // base64-encoded file contents
   uploadedAt: { type: Date, default: Date.now },
 });
 
 const TaskSchema = new Schema({
-  title: { type: String, required: true },
-  description: { type: String, default: null },
+  title: { type: String, required: true, validate: textLimit("title", MAX_TASK_TITLE_LENGTH) },
+  description: { type: String, default: null, validate: textLimit("description", MAX_TASK_DESCRIPTION_LENGTH) },
   column: { type: Schema.Types.ObjectId, ref: "Column", required: true },
   order: { type: Number, default: 0 },
   // Independent of `column` on purpose: a task's completion state and its
@@ -53,11 +58,21 @@ const TaskSchema = new Schema({
     ],
   },
   createdAt: { type: Date, default: Date.now },
-});
+},
+// updatedAt only; see models/Project.js.
+{ timestamps: { createdAt: false, updatedAt: true } });
 
 // Every ordering query filters by column and sorts by order (see
 // lib/taskOrdering.js) — this index keeps that a cheap indexed scan
 // instead of a collection-wide sort as a project's task list grows.
 TaskSchema.index({ column: 1, order: 1 });
+
+// H6: every project-scoped read/write filters on `project` alone — loading a
+// project's tasks, the dashboard's `project: { $in: [...] }`, the public
+// shared board, and the Task.deleteMany on project deletion. The compound
+// index above can't serve those: its leading field is `column`, and a
+// query that doesn't filter on the leading field can't use it. Without
+// this index each of those is a full collection scan.
+TaskSchema.index({ project: 1 });
 
 export default models.Task || model("Task", TaskSchema);

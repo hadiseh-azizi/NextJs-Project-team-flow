@@ -1,4 +1,4 @@
-import AuthProvider from "@/components/AuthProvider";
+import { headers } from "next/headers";
 import ThemeRegistry from "@/components/ThemeRegistry";
 import { brandCssVariables } from "@/lib/brand";
 import "./globals.css";
@@ -40,16 +40,23 @@ const THEME_INIT_SCRIPT = `
 })();
 `;
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  // The per-request CSP nonce set by src/middleware.js (see lib/csp.js).
+  // Reading request headers is also what makes every page render per
+  // request, which a nonce requires. The browser hides the nonce attribute
+  // from the DOM after parsing, so these elements opt out of the hydration
+  // attribute comparison.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <head>
-        <style id="brand-tokens" dangerouslySetInnerHTML={{ __html: brandCssVariables() }} />
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <style id="brand-tokens" nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: brandCssVariables() }} />
+        <script nonce={nonce} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
       <body>
-        <ThemeRegistry>
-          <AuthProvider>{children}</AuthProvider>
+        <ThemeRegistry nonce={nonce}>
+          {children}
         </ThemeRegistry>
       </body>
     </html>

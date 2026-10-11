@@ -1,4 +1,4 @@
-// Animations & Micro-Interactions pass — see CHANGELOG.md.
+// Animations & Micro-Interactions pass.
 //
 // `staggerDelay` is the one piece of this phase's motion work that is
 // plain, unit-testable JS (everything else is CSS/JSX behavior with no

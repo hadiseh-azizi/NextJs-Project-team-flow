@@ -1,4 +1,4 @@
-// Dynamic browser tab titles — see CHANGELOG.md.
+// Dynamic browser tab titles.
 //
 // Covers lib/pageTitle.js (pure JS). The Next.js metadata wiring and the
 // client hook need a browser/DOM, which this Node-only harness doesn't have;

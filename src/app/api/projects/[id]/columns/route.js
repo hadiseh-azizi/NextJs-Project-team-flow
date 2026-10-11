@@ -8,8 +8,8 @@ import { getAccessibleProject, canEditProject } from "@/lib/authz";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
+import { MAX_COLUMN_NAME_LENGTH } from "@/lib/fieldLimits";
 
-const MAX_COLUMN_NAME_LENGTH = 60;
 
 // Column order is derived from "current max + 1", but reading that max
 // and inserting the new column are two separate operations — two

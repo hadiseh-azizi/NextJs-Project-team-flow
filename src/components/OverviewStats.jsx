@@ -6,7 +6,6 @@ import { Box, Typography } from "@mui/material";
 import { alpha } from "@mui/material/styles";
 import { formatDateOnly } from "@/lib/dateOnly";
 import { isOverdue, localTodayYmd } from "@/lib/dueStatus";
-import { isTaskCompleted } from "@/lib/taskCompletion";
 import { projectColorForId } from "@/lib/entityColor";
 import { groupByProject } from "@/lib/groupByProject";
 import { useThemeMode } from "@/components/ThemeModeContext";
@@ -14,7 +13,12 @@ import { useThemeMode } from "@/components/ThemeModeContext";
 // Three numbers that double as a switch: choosing one lists what is behind
 // it right underneath. "My open tasks" is open by default because it is the
 // one list that tells you what to do next.
-export default function OverviewStats({ projects, userId }) {
+//
+// The numbers are the true totals (counted by the database). The two task
+// lists are bounded and already ordered by the server — open tasks soonest
+// due first, completed ones most recently updated first — so when a list
+// holds fewer rows than its count, a line under it says so.
+export default function OverviewStats({ projects, counts, openTasks, completedTasks }) {
   const [activeStat, setActiveStat] = useState("open");
   const { mode } = useThemeMode();
   // Set after mount so server and client markup agree; overdue flags appear
@@ -24,29 +28,9 @@ export default function OverviewStats({ projects, userId }) {
     setToday(localTodayYmd());
   }, []);
 
-  const allTasks = projects.flatMap((p) =>
-    p.tasks.map((t) => ({
-      ...t,
-      projectId: p.id,
-      projectName: p.name,
-      isDone: isTaskCompleted(t),
-    }))
-  );
-  const doneTasks = allTasks.filter((t) => t.isDone);
-  // Soonest due date first; tasks without one keep their existing order at the end.
-  const myOpenTasks = allTasks
-    .filter((t) => t.assignees.some((a) => a.id === userId) && !t.isDone)
-    .map((t, i) => ({ t, i }))
-    .sort((a, b) => {
-      const ad = a.t.dueDate ? new Date(a.t.dueDate).getTime() : Infinity;
-      const bd = b.t.dueDate ? new Date(b.t.dueDate).getTime() : Infinity;
-      return ad === bd ? a.i - b.i : ad - bd;
-    })
-    .map(({ t }) => t);
-
   const stats = [
-    { key: "open", label: "My open tasks", value: myOpenTasks.length },
-    { key: "done", label: "Tasks completed", value: `${doneTasks.length}/${allTasks.length}` },
+    { key: "open", label: "My open tasks", value: counts.open },
+    { key: "done", label: "Tasks completed", value: `${counts.done}/${counts.total}` },
     { key: "projects", label: "Active projects", value: projects.length },
   ];
 
@@ -58,10 +42,10 @@ export default function OverviewStats({ projects, userId }) {
   } else if (activeStat === "done") {
     // Project name is carried on each item so it can be grouped below;
     // it's shown once as the group heading rather than repeated per row.
-    items = doneTasks.map((t) => ({ id: t.id, primary: t.title, projectId: t.projectId, projectName: t.projectName, href: `/dashboard/projects/${t.projectId}` }));
+    items = completedTasks.map((t) => ({ id: t.id, primary: t.title, projectId: t.projectId, projectName: t.projectName, href: `/dashboard/projects/${t.projectId}` }));
     emptyLabel = "Nothing's been finished yet.";
   } else if (activeStat === "open") {
-    items = myOpenTasks.map((t) => ({
+    items = openTasks.map((t) => ({
       id: t.id,
       primary: t.title,
       projectId: t.projectId,
@@ -72,6 +56,8 @@ export default function OverviewStats({ projects, userId }) {
     emptyLabel = "No open tasks assigned to you.";
   }
   const isTaskList = activeStat === "open" || activeStat === "done";
+  const totalForList = activeStat === "open" ? counts.open : activeStat === "done" ? counts.done : 0;
+  const listIsPartial = isTaskList && items.length > 0 && items.length < totalForList;
 
   return (
     <Box
@@ -193,6 +179,13 @@ export default function OverviewStats({ projects, userId }) {
                   <TaskRow key={it.id} it={it} activeStat={activeStat} today={today} />
                 ))}
               </Box>
+            )}
+            {listIsPartial && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: "block", py: 1.5 }}>
+                {activeStat === "open"
+                  ? `Showing the ${items.length} due soonest of ${totalForList}.`
+                  : `Showing the ${items.length} most recently updated of ${totalForList}.`}
+              </Typography>
             )}
           </Box>
         )}

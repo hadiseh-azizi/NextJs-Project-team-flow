@@ -13,12 +13,9 @@ import { withOptionalTransaction } from "@/lib/mongoTransaction";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString, validateEnumValue } from "@/lib/validation";
 import { EDITING_MODES } from "@/lib/authz";
+import { MAX_PROJECT_NAME_LENGTH } from "@/lib/fieldLimits";
+import { TEAM_POPULATE, MEMBERS_POPULATE, EDITORS_POPULATE, loadColumnsAndTasks, respondWithUpdatedProject } from "@/lib/projectQueries";
 
-const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
-const MEMBERS_POPULATE = { path: "members", select: "name email" };
-const EDITORS_POPULATE = { path: "editors", select: "name email" };
-
-const MAX_PROJECT_NAME_LENGTH = 150;
 
 export async function GET(req, { params }) {
   const session = await getServerSession(authOptions);
@@ -37,25 +34,11 @@ export async function GET(req, { params }) {
     .populate(MEMBERS_POPULATE)
     .populate(EDITORS_POPULATE)
     .lean();
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  if (!projectAccessFor(project, userId).allowed) return NextResponse.json({ error: "Access denied" }, { status: 403 });
+  // L4: missing and not-accessible are one response (see authz.js: most
+  // routes deliberately don't distinguish them), so ids can't be probed.
+  if (!project || !projectAccessFor(project, userId).allowed) return NextResponse.json({ error: "Access denied" }, { status: 403 });
 
-  const [columns, tasks] = await Promise.all([
-    // Tie-broken by createdAt/_id in case any column ever shares an
-    // `order` value (see lib/columnOrderCompare.js) — the unique index on
-    // Column prevents new duplicates, but this keeps display order
-    // deterministic regardless.
-    Column.find({ project: id }).sort({ order: 1, createdAt: 1, _id: 1 }).lean(),
-    // The board view only ever needs attachment metadata (name/size/count),
-    // never the base64 contents — excluding it here means opening a
-    // project doesn't pull every attachment's full bytes for every task
-    // out of MongoDB on every load.
-    Task.find({ project: id })
-      .select("-attachments.data")
-      .populate("assignees", "name")
-      .sort({ order: 1 })
-      .lean(),
-  ]);
+  const [columns, tasks] = await loadColumnsAndTasks(id);
 
   return NextResponse.json(toProjectDTO(project, columns, tasks));
 }
@@ -76,8 +59,8 @@ export async function PATCH(req, { params }) {
   await connectDB();
 
   const project = await Project.findById(id).lean();
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  if (String(project.manager) !== userId) {
+  // L4: same response whether the project is missing or just not yours.
+  if (!project || String(project.manager) !== userId) {
     return NextResponse.json({ error: "Only the project manager can rename it" }, { status: 403 });
   }
 
@@ -106,22 +89,11 @@ export async function PATCH(req, { params }) {
   return withMongoErrorHandling(async () => {
     await Project.updateOne({ _id: id }, { $set: updateFields });
 
-    const updated = await Project.findById(id)
-      .populate("manager", "name email")
-      .populate(TEAM_POPULATE)
-      .populate(MEMBERS_POPULATE)
-      .populate(EDITORS_POPULATE)
-      .lean();
-    const [columns, tasks] = await Promise.all([
-      Column.find({ project: id }).sort({ order: 1, createdAt: 1, _id: 1 }).lean(),
-      Task.find({ project: id })
-        .select("-attachments.data")
-        .populate("assignees", "name")
-        .sort({ order: 1 })
-        .lean(),
-    ]);
-
-    return NextResponse.json(toProjectDTO(updated, columns, tasks));
+    // A rename or editing-mode change touches one project document, so the
+    // response is the access summary ({ id, name, members, editingMode,
+    // editors }), not the whole project with every column and task. The
+    // project page merges it into the copy it already holds.
+    return respondWithUpdatedProject(id);
   });
 }
 
@@ -138,8 +110,8 @@ export async function DELETE(req, { params }) {
   await connectDB();
 
   const project = await Project.findById(id).lean();
-  if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-  if (String(project.manager) !== userId) {
+  // L4: same response whether the project is missing or just not yours.
+  if (!project || String(project.manager) !== userId) {
     return NextResponse.json({ error: "Only the project manager can delete it" }, { status: 403 });
   }
 

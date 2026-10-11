@@ -2,54 +2,21 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
-import Project from "@/models/Project";
-import Column from "@/models/Column";
-import Task from "@/models/Task";
-import { toProjectDTO } from "@/lib/serialize";
-import { isValidObjectId } from "@/lib/objectId";
+import { normalizeObjectId } from "@/lib/objectId";
 import { applyProjectEditPermission, isEligibleEditor } from "@/lib/authz";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateObjectIdField } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
+import { loadProjectAsManager as loadManagedProject, respondWithUpdatedProject, MEMBERS_POPULATE } from "@/lib/projectQueries";
 
-const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
-const MEMBERS_POPULATE = { path: "members", select: "name email" };
-const EDITORS_POPULATE = { path: "editors", select: "name email" };
-
-// Loads the project (with its team populated, for the roster checks
-// below) and confirms the current user is its manager. Shared by POST
-// and DELETE, which otherwise differ only in which mutation they apply —
-// same shape as members/route.js's loadProjectAsManager.
-async function loadProjectAsManager(id, userId) {
-  if (!isValidObjectId(id)) return { error: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
-
-  const project = await Project.findById(id).populate("team").populate(MEMBERS_POPULATE).lean();
-  if (!project) return { error: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
-
-  if (String(project.manager?._id ?? project.manager) !== userId) {
-    return { error: NextResponse.json({ error: "Only the project manager can manage editing permissions" }, { status: 403 }) };
-  }
-
-  return { project };
-}
-
-async function respondWithUpdatedProject(id) {
-  const project = await Project.findById(id)
-    .populate("manager", "name email")
-    .populate(TEAM_POPULATE)
-    .populate(MEMBERS_POPULATE)
-    .populate(EDITORS_POPULATE)
-    .lean();
-  const [columns, tasks] = await Promise.all([
-    Column.find({ project: id }).sort({ order: 1, createdAt: 1, _id: 1 }).lean(),
-    Task.find({ project: id })
-      .select("-attachments.data")
-      .populate("assignees", "name")
-      .sort({ order: 1 })
-      .lean(),
-  ]);
-  return NextResponse.json(toProjectDTO(project, columns, tasks));
-}
+// Loads the project (with its team and members populated, for the roster
+// checks below) and confirms the current user is its manager. Shared by
+// POST and DELETE, which otherwise differ only in which mutation they apply.
+const loadProjectAsManager = (id, userId) =>
+  loadManagedProject(id, userId, {
+    forbiddenMessage: "Only the project manager can manage editing permissions",
+    populate: ["team", MEMBERS_POPULATE],
+  });
 
 // Grants an individual member explicit edit permission — only meaningful
 // while the project is in "manager_approval" mode (see
@@ -104,8 +71,8 @@ export async function DELETE(req, { params }) {
   const { id } = await params;
 
   const { searchParams } = new URL(req.url);
-  const removeUserId = searchParams.get("userId");
-  if (!isValidObjectId(removeUserId)) {
+  const removeUserId = normalizeObjectId(searchParams.get("userId"));
+  if (!removeUserId) {
     return NextResponse.json({ error: "A valid userId query parameter is required" }, { status: 400 });
   }
 

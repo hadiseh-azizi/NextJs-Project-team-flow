@@ -11,6 +11,7 @@ import PageHeader from "@/components/PageHeader";
 import EmptyState from "@/components/EmptyState";
 import Field from "@/components/FormField";
 import TeamCard from "@/components/TeamCard";
+import PendingInvitations from "@/components/PendingInvitations";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 
@@ -144,6 +145,8 @@ export default function TeamsPage() {
           {notice}
         </Alert>
       )}
+
+      <PendingInvitations onJoined={load} />
 
       <Dialog open={showForm} onClose={resetForm} fullWidth maxWidth="xs">
         <form onSubmit={handleCreate}>

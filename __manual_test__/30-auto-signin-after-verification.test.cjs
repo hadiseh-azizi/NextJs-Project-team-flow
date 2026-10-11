@@ -176,6 +176,14 @@ function makeFakeAutoLoginTokenModel() {
   const SECRET = process.env.NEXTAUTH_SECRET;
   const PENDING_USER = { _id: "507f1f77bcf86cd799439011", email: "verify-me@example.com", emailVerified: false, tokenVersion: 0 };
 
+  // M1: automatic sign-in is only issued when the link is opened in the
+  // browser that registered (binding cookie matches the token's `bind`
+  // claim). These cases model that legitimate path; the other-browser path
+  // is covered in 49-security-m1-m6.test.cjs.
+  const BIND_SECRET = "registering-browser-secret";
+  const BIND_HASH = require("crypto").createHash("sha256").update(BIND_SECRET).digest("hex");
+  const SAME_BROWSER = { cookie: `tf_reg_bind=${BIND_SECRET}` };
+
   function signToken(payload) {
     return jwt.sign({ purpose: "email-verification", ...payload }, SECRET, { expiresIn: "24h" });
   }
@@ -183,8 +191,8 @@ function makeFakeAutoLoginTokenModel() {
   await test("a valid token verifies the account and returns a one-time autoLoginToken", async () => {
     const { calls } = setupVerifyMocks({ users: [PENDING_USER] });
     const { POST } = require("../src/app/api/auth/verify-email/route.js");
-    const token = signToken({ userId: PENDING_USER._id, email: PENDING_USER.email, tokenVersion: 0 });
-    const res = await POST(fakeReq({ token }));
+    const token = signToken({ userId: PENDING_USER._id, email: PENDING_USER.email, tokenVersion: 0, bind: BIND_HASH });
+    const res = await POST(fakeReq({ token }, SAME_BROWSER));
     const json = await res.json();
     assert.strictEqual(res.status, 200);
     assert.strictEqual(json.ok, true);
@@ -200,8 +208,8 @@ function makeFakeAutoLoginTokenModel() {
       },
     });
     const { POST } = require("../src/app/api/auth/verify-email/route.js");
-    const token = signToken({ userId: PENDING_USER._id, email: PENDING_USER.email, tokenVersion: 0 });
-    const res = await POST(fakeReq({ token }));
+    const token = signToken({ userId: PENDING_USER._id, email: PENDING_USER.email, tokenVersion: 0, bind: BIND_HASH });
+    const res = await POST(fakeReq({ token }, SAME_BROWSER));
     const json = await res.json();
     assert.strictEqual(res.status, 200);
     assert.strictEqual(json.ok, true);

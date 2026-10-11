@@ -13,6 +13,8 @@ import { pastelForString } from "@/lib/pastelColor";
 import { avatarInitial } from "@/lib/avatarInitial";
 import { formatDateOnly } from "@/lib/dateOnly";
 import { isOverdue, localTodayYmd } from "@/lib/dueStatus";
+import { touchHitAreaSx } from "@/lib/touchTarget";
+import { visuallyHiddenSx } from "@/lib/a11y";
 
 export default function TaskCard({ task, canEdit = true, onDragStart, onDragOverCard, onDelete, onOpen, onToggleComplete, dropIndicator, exiting = false }) {
   const { mode } = useThemeMode();
@@ -20,6 +22,21 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
   const [dragging, setDragging] = useState(false);
   const dragTimer = useRef(null);
   useEffect(() => () => clearTimeout(dragTimer.current), []);
+
+  // The card's own onDragEnd covers a normal drop, a cancel and Esc. It
+  // can't fire if the browser ends the drag without reaching this element,
+  // so while this card is the one being dragged, the document is also
+  // watched: the dimmed "lifted" look must never outlive the drag.
+  useEffect(() => {
+    if (!dragging) return undefined;
+    const stop = () => setDragging(false);
+    document.addEventListener("dragend", stop);
+    document.addEventListener("drop", stop);
+    return () => {
+      document.removeEventListener("dragend", stop);
+      document.removeEventListener("drop", stop);
+    };
+  }, [dragging]);
 
   const completed = !!task.completed;
   // A completed task is finished, so its due date can't be late — this is
@@ -43,11 +60,15 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
     }
   }, [completed]);
 
-  // Dragging has no keyboard equivalent, but opening a task doesn't need
-  // one: the card itself is focusable and Enter/Space opens it, and the
-  // "Column" field inside the task dialog lets a keyboard-only user move
-  // it between columns without dragging at all.
-  function handleKeyDown(e) {
+  // Opening a task by keyboard: the title is the focusable "open" control
+  // (Enter/Space). The card is deliberately NOT a button itself — it holds
+  // the complete and delete buttons, and a button inside a button is
+  // invalid, so assistive technology reads it unreliably. A click anywhere
+  // on the card still opens the task for mouse and touch users (see the
+  // Card's onClick). Dragging has no keyboard equivalent; the "Column"
+  // field inside the task dialog lets a keyboard-only or touch user move
+  // the task between columns without dragging at all.
+  function handleOpenKeyDown(e) {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onOpen(task);
@@ -63,9 +84,6 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
       )}
       <Card
         draggable={canEdit}
-        role="button"
-        tabIndex={0}
-        aria-label={`Open task: ${task.title}`}
         onDragStart={(e) => {
           if (!canEdit) return;
           onDragStart(e, task.id);
@@ -79,7 +97,6 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
         }}
         onDragOver={(e) => onDragOverCard(e, task)}
         onClick={() => onOpen(task)}
-        onKeyDown={handleKeyDown}
         sx={(theme) => ({
           cursor: canEdit ? "grab" : "pointer",
           bgcolor: cardColor || "background.paper",
@@ -96,7 +113,8 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
           "&:active": canEdit ? { cursor: "grabbing" } : undefined,
           "&:hover": !dragging ? { borderColor: "var(--brand-border-hover)", boxShadow: theme.tf.shadow.raised, transform: "translateY(-1px)" } : undefined,
           "&:hover .task-delete-btn, &:focus-within .task-delete-btn": { opacity: 1 },
-          "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
+          // The card itself is not focusable; mark it when its open control is.
+          "&:has(.task-open:focus-visible)": { borderColor: "primary.main" },
         })}
       >
         <CardContent sx={{ p: "10px 12px !important" }}>
@@ -108,7 +126,6 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
                 e.stopPropagation();
                 onToggleComplete(task);
               }}
-              onKeyDown={(e) => e.stopPropagation()}
               aria-label={
                 canEdit
                   ? completed
@@ -121,6 +138,8 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
               sx={{
                 p: 0.5, mt: -0.25, ml: -0.5, color: completed ? "success.main" : "text.secondary", transition: "color .15s ease",
                 "&.Mui-disabled": { color: completed ? "success.main" : "text.secondary" },
+                // 18px icon + 4px padding each side = 26px; touch gets a 44px hit area.
+                ...touchHitAreaSx(26),
               }}
             >
               {completed ? (
@@ -131,13 +150,20 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
             </IconButton>
             <Typography
               variant="body2"
+              className="task-open"
+              role="button"
+              tabIndex={0}
+              onKeyDown={handleOpenKeyDown}
               sx={{
                 flexGrow: 1,
+                minWidth: 0,
                 fontWeight: 500,
                 lineHeight: 1.4,
                 overflowWrap: "anywhere",
                 textDecoration: completed ? "line-through" : "none",
                 color: completed ? "text.secondary" : "text.primary",
+                borderRadius: 0.5,
+                "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main", outlineOffset: 2 },
               }}
             >
               {task.title}
@@ -157,12 +183,14 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
                   p: 0.5,
                   "&:hover": { color: "error.main" },
                   "&:focus-visible": { opacity: 1, color: "error.main" },
+                  // 15px icon + 4px padding each side = 23px. The card edge
+                  // is 6px away, so the right side stops there.
+                  ...touchHitAreaSx(23, { right: 6 }),
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(task);
                 }}
-                onKeyDown={(e) => e.stopPropagation()}
                 aria-label={`Delete task: ${task.title}`}
               >
                 <CloseIcon sx={{ fontSize: 15 }} />
@@ -193,12 +221,12 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
                   </Typography>
                 )}
                 {task.attachments.length > 0 && (
-                  <Box
-                    sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, color: "text.secondary" }}
-                    aria-label={`${task.attachments.length} attached ${task.attachments.length === 1 ? "file" : "files"}`}
-                  >
-                    <AttachFileIcon sx={{ fontSize: 14 }} />
+                  <Box sx={{ display: "inline-flex", alignItems: "center", gap: 0.25, color: "text.secondary" }}>
+                    <AttachFileIcon aria-hidden="true" sx={{ fontSize: 14 }} />
                     <Typography variant="caption">{task.attachments.length}</Typography>
+                    <Box component="span" sx={visuallyHiddenSx}>
+                      {task.attachments.length === 1 ? "attached file" : "attached files"}
+                    </Box>
                   </Box>
                 )}
               </Box>
@@ -209,7 +237,7 @@ export default function TaskCard({ task, canEdit = true, onDragStart, onDragOver
                 >
                   {task.assignees.map((a) => (
                     <Tooltip key={a.id} title={a.name || "Unnamed"}>
-                      <Avatar aria-label={a.name || "Unnamed"} sx={{ bgcolor: pastelForString(a.id, mode) }}>
+                      <Avatar role="img" aria-label={a.name || "Unnamed"} sx={{ bgcolor: pastelForString(a.id, mode) }}>
                         {avatarInitial(a.name)}
                       </Avatar>
                     </Tooltip>

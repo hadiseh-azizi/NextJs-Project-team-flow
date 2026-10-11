@@ -6,8 +6,7 @@ const { test, summary, assert } = require("./harness.cjs");
 // Collapsible Kanban columns: the pure persistence helpers in
 // src/lib/collapsedColumns.js, checked against an in-memory Storage fake,
 // plus source-level guards that the feature stays client-only. No browser
-// is involved — layout, animation and focus behaviour are covered by the
-// manual matrix in CHANGELOG.md.
+// is involved — layout, animation and focus behaviour are not covered here.
 
 const {
   collapsedColumnsKey,

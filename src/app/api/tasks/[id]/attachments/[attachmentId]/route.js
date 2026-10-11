@@ -7,7 +7,25 @@ import { toTaskDTO } from "@/lib/serialize";
 import { getTaskAccess, canEditProject } from "@/lib/authz";
 import { isValidObjectId } from "@/lib/objectId";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
-import { buildContentDisposition } from "@/lib/attachmentPolicy";
+import { buildContentDisposition, MAX_FILE_SIZE } from "@/lib/attachmentPolicy";
+
+const DOWNLOAD_STREAM_CHUNK_SIZE = 64 * 1024;
+
+// Wraps an in-memory buffer as a chunked stream. Used only for attachments
+// larger than today's upload limit — see the comment in GET below.
+function bufferToStream(buffer) {
+  let offset = 0;
+  return new ReadableStream({
+    pull(controller) {
+      if (offset >= buffer.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(buffer.subarray(offset, offset + DOWNLOAD_STREAM_CHUNK_SIZE));
+      offset += DOWNLOAD_STREAM_CHUNK_SIZE;
+    },
+  });
+}
 
 // Streams the raw file back with the right headers so the browser downloads
 // it (or opens it inline for things like PDFs/images).
@@ -38,11 +56,21 @@ export async function GET(req, { params }) {
   if (!attachment) return NextResponse.json({ error: "File not found" }, { status: 404 });
 
   const buffer = Buffer.from(attachment.data, "base64");
-  return new NextResponse(buffer, {
+
+  // The response body is the decoded file (raw bytes, not base64), so its
+  // size is the attachment's real size. Everything uploaded under the
+  // current limit fits comfortably under the deployment platform's 4.5 MB
+  // response limit and is sent as a normal buffered response. Files
+  // stored under the earlier, larger limit (up to 5 MiB) can exceed it, so
+  // those are sent as a chunked stream instead — streamed responses are
+  // not subject to that limit on Vercel. Content-Length is omitted for
+  // them (the stream is chunked); the bytes delivered are identical.
+  const streamed = buffer.length > MAX_FILE_SIZE;
+  return new NextResponse(streamed ? bufferToStream(buffer) : buffer, {
     headers: {
       "Content-Type": attachment.mimeType || "application/octet-stream",
       "Content-Disposition": buildContentDisposition(attachment.filename),
-      "Content-Length": String(buffer.length),
+      ...(streamed ? {} : { "Content-Length": String(buffer.length) }),
       // The upload route already validates the file's contents against
       // its declared type, but this stops a browser from ever second-
       // guessing that type itself (e.g. sniffing a maliciously-crafted

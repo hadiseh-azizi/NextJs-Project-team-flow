@@ -1,23 +1,37 @@
 import Project from "@/models/Project";
 import Task from "@/models/Task";
 import Team from "@/models/Team";
-import { isValidObjectId } from "@/lib/objectId";
+import { isValidObjectId, normalizeObjectId } from "@/lib/objectId";
+import { withOptionalTransaction } from "@/lib/mongoTransaction";
 
 // Who's allowed into a project, independent of *why*. Every id in the
-// returned set (plus the manager) has access; membership in the team
-// alone is only one possible source of that set — see the comment below.
+// returned set (plus the manager) has access.
+//
+// The rule is: current team member AND on the project's list (for a
+// restricted project), or simply a current team member (for a legacy
+// project). In both cases the owning team's *current* roster is the outer
+// bound — an id lingering in `Project.members` after its owner left the
+// team (a removal that predates the cleanup in DELETE
+// /api/teams/[id]/members, or any future path that edits `Team.members`
+// without touching projects) grants nothing. Enforcing this here, on read,
+// rather than relying only on cleanup at removal time means the boundary
+// holds no matter how the stale id got there. The manager is not subject
+// to the team-roster check: manager access is a separate path and is
+// deliberately unchanged.
 function projectRoster(project) {
   const managerId = String(project.manager?._id ?? project.manager);
   const hasProjectMembersList = Array.isArray(project.members);
+  const teamMemberIds = (project.team?.members || []).map((m) => String(m._id ?? m));
   // A project with no `members` key at all is a legacy project — one
   // saved before per-project membership existed (see models/Project.js).
   // For those, fall back to the original rule (every team member has
   // access) so nothing that worked yesterday breaks today. A project
   // that *has* the field, even as an empty array, is access-restricted:
-  // only the manager and whoever is explicitly listed can get in.
+  // only the manager and whoever is explicitly listed — and still on the
+  // team — can get in.
   const memberIds = hasProjectMembersList
-    ? project.members.map((m) => String(m._id ?? m))
-    : (project.team.members || []).map((m) => String(m._id ?? m));
+    ? project.members.map((m) => String(m._id ?? m)).filter((id) => teamMemberIds.includes(id))
+    : teamMemberIds;
   return { managerId, hasProjectMembersList, memberIds };
 }
 
@@ -31,7 +45,7 @@ function projectRoster(project) {
 export function projectAccessFor(project, userId) {
   const { managerId, hasProjectMembersList, memberIds } = projectRoster(project);
   const isManager = managerId === userId;
-  const isTeamMember = (project.team.members || []).some((m) => String(m._id ?? m) === userId);
+  const isTeamMember = (project.team?.members || []).some((m) => String(m._id ?? m) === userId);
   const isProjectMember = isManager || memberIds.includes(userId);
   return { isManager, isTeamMember, isProjectMember, hasProjectMembersList, allowed: isProjectMember };
 }
@@ -86,15 +100,42 @@ export function canEditProject(project, userId) {
 // becomes a no-op (the field already exists), falling through to the
 // plain $addToSet/$pull below, same as it would for an already-restricted
 // project.
+//
+// Removing someone from a project is the one case that must touch more
+// than the project document. Their access (`members`), any individually
+// granted edit permission (`editors`) and their assignment to this
+// project's tasks all go together: a person who can no longer open the
+// project shouldn't stay listed as an assignee on a board they can't see
+// (validateAssignees() would reject that assignment today, so leaving it
+// would also make the stored data disagree with the rule). Only this
+// user's id is pulled from `Task.assignees`, and only on tasks whose
+// `project` is this one — every other assignee, and every other project's
+// tasks, are untouched, and no task is deleted. All three writes run in
+// one transaction (falling back to plain writes on a standalone MongoDB,
+// like the team-removal route does); each is a `$pull`, so a retry or the
+// no-session fallback can't double-apply anything.
 export async function applyProjectMembership(project, targetUserId, action) {
-  if (!Array.isArray(project.members)) {
-    const seed = (project.team.members || []).map((m) => String(m._id ?? m));
-    await Project.updateOne({ _id: project._id, members: { $exists: false } }, { $set: { members: seed } });
+  const seedIfLegacy = async (options) => {
+    if (!Array.isArray(project.members)) {
+      const seed = (project.team.members || []).map((m) => String(m._id ?? m));
+      await Project.updateOne({ _id: project._id, members: { $exists: false } }, { $set: { members: seed } }, options);
+    }
+  };
+
+  if (action === "add") {
+    await seedIfLegacy(undefined);
+    await Project.updateOne({ _id: project._id }, { $addToSet: { members: targetUserId } });
+    return;
   }
+
   // Removing someone's project access also drops any edit permission they
   // held, so re-adding them later doesn't silently bring it back.
-  const update = action === "add" ? { $addToSet: { members: targetUserId } } : { $pull: { members: targetUserId, editors: targetUserId } };
-  await Project.updateOne({ _id: project._id }, update);
+  await withOptionalTransaction(async (session) => {
+    const options = session ? { session } : undefined;
+    await seedIfLegacy(options);
+    await Project.updateOne({ _id: project._id }, { $pull: { members: targetUserId, editors: targetUserId } }, options);
+    await Task.updateMany({ project: project._id }, { $pull: { assignees: targetUserId } }, options);
+  });
 }
 
 // Whether `userId` can be given individual edit permission on this
@@ -215,11 +256,13 @@ export function validateAssignees(project, assigneeIds) {
   if (assigneeIds.length > MAX_ASSIGNEE_IDS) {
     return { error: `assigneeIds has too many entries (max ${MAX_ASSIGNEE_IDS})` };
   }
-  const uniqueIds = [...new Set(assigneeIds.map(String))];
-  const invalidId = uniqueIds.find((id) => !isValidObjectId(id));
-  if (invalidId !== undefined) {
+  const rawIds = [...new Set(assigneeIds.map(String))];
+  if (rawIds.some((id) => !isValidObjectId(id))) {
     return { error: "One or more assignee IDs are invalid" };
   }
+  // Canonical spelling, so "ABC..." and "abc..." are one assignee and the
+  // roster comparison below matches stored (lower-case) ids.
+  const uniqueIds = [...new Set(rawIds.map(normalizeObjectId))];
   const { managerId, memberIds } = projectRoster(project);
   const validAssignees = new Set([managerId, ...memberIds]);
   const unauthorizedId = uniqueIds.find((id) => !validAssignees.has(id));

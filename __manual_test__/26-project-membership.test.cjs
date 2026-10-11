@@ -142,6 +142,9 @@ function team() {
         calls.push({ filter, update });
       },
     });
+    // Removal also clears task assignments (M10), in a transaction; stub both.
+    mockModule("@/models/Task", { updateMany: async () => {} });
+    mockModule("@/lib/mongoTransaction", { withOptionalTransaction: async (fn) => fn(null) });
     const { applyProjectMembership: applyFresh } = require("../src/lib/authz.js");
     const project = { _id: PROJECT_ID, team: team() };
     await applyFresh(project, OTHER_MEMBER_ID, "remove");
@@ -182,7 +185,7 @@ function team() {
       }),
     });
     mockModule("@/models/Column", { find: () => ({ sort: function () { return this; }, lean: async () => [] }) });
-    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }) });
+    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }), aggregate: async () => [] }); // H2: the list route counts with aggregate()
     const applyCalls = [];
     mockModule("@/lib/authz", {
       applyProjectMembership: async (project, targetUserId, action) => {
@@ -296,7 +299,7 @@ function team() {
       }),
     });
     mockModule("@/models/Column", { find: () => ({ sort: function () { return this; }, lean: async () => [] }) });
-    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }) });
+    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }), aggregate: async () => [] }); // H2: the list route counts with aggregate()
   }
 
   const legacyProjectDoc = {
@@ -399,7 +402,7 @@ function team() {
       }),
     });
     mockModule("@/models/Column", { find: () => ({ lean: async () => [] }) });
-    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }) });
+    mockModule("@/models/Task", { find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }), aggregate: async () => [] }); // H2: the list route counts with aggregate()
 
     const { GET } = require("../src/app/api/projects/route.js");
     const res = await GET();

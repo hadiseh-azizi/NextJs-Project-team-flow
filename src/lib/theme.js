@@ -41,6 +41,7 @@ function tokensFor(dark) {
     disabled: b.textDisabled,
     line: b.border,
     lineStrong: b.borderStrong,
+    controlLine: b.controlBorder,
     canvas: b.background,
     paper: b.surface,
     overlay: b.surfaceElevated,
@@ -151,13 +152,13 @@ export function buildTheme(mode) {
           containedError: { "&:hover": { backgroundColor: t.errorHover } },
           outlinedPrimary: {
             color: t.ink,
-            borderColor: t.lineStrong,
-            "&:hover": { borderColor: t.disabled, backgroundColor: t.hover },
+            borderColor: t.controlLine,
+            "&:hover": { borderColor: t.subtle, backgroundColor: t.hover },
           },
           outlinedInherit: {
             color: t.ink,
-            borderColor: t.lineStrong,
-            "&:hover": { borderColor: t.disabled, backgroundColor: t.hover },
+            borderColor: t.controlLine,
+            "&:hover": { borderColor: t.subtle, backgroundColor: t.hover },
           },
           outlinedError: {
             borderColor: alpha(t.error, 0.5),
@@ -284,6 +285,10 @@ export function buildTheme(mode) {
         styleOverrides: {
           root: {
             minHeight: 36,
+            // Touch screens: menu rows (the Column / Assignees pickers in the
+            // task dialog are the touch alternative to dragging) get a
+            // finger-sized row.
+            "@media (pointer: coarse)": { minHeight: 44 },
             fontSize: "0.875rem",
             borderRadius: 4,
             "&.Mui-focusVisible": { outline: "none", backgroundColor: t.hover },
@@ -315,8 +320,8 @@ export function buildTheme(mode) {
             backgroundColor: t.input,
             fontSize: "0.875rem",
             transition: "box-shadow .12s ease",
-            "& .MuiOutlinedInput-notchedOutline": { borderColor: t.lineStrong, transition: "border-color .12s ease" },
-            "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.disabled },
+            "& .MuiOutlinedInput-notchedOutline": { borderColor: t.controlLine, transition: "border-color .12s ease" },
+            "&:hover .MuiOutlinedInput-notchedOutline": { borderColor: t.subtle },
             "&.Mui-focused": { boxShadow: `0 0 0 3px ${alpha(t.primary, dark ? 0.28 : 0.2)}` },
             "&.Mui-focused .MuiOutlinedInput-notchedOutline": { borderWidth: 1, borderColor: t.primary },
             "&.Mui-error .MuiOutlinedInput-notchedOutline": { borderColor: t.error },
@@ -324,7 +329,13 @@ export function buildTheme(mode) {
             "&.Mui-disabled": { backgroundColor: t.sunken },
             "&.MuiInputBase-multiline": { padding: 0 },
           },
-          input: { padding: "8px 12px", "&:is(input)": { height: "1.4375em" } },
+          // Touch screens: single-line inputs and selects reach a 44px row
+          // (20px text + 12px above and below). Multiline fields are unchanged.
+          input: {
+            padding: "8px 12px",
+            "&:is(input)": { height: "1.4375em" },
+            "@media (pointer: coarse)": { "&:not(.MuiInputBase-inputMultiline)": { paddingTop: 12, paddingBottom: 12 } },
+          },
           inputMultiline: { padding: "8px 12px" },
         },
       },
@@ -338,7 +349,7 @@ export function buildTheme(mode) {
         styleOverrides: { root: { marginLeft: 0, marginRight: 0, marginTop: 6, fontSize: "0.78rem", lineHeight: 1.45 } },
       },
       MuiCheckbox: {
-        styleOverrides: { root: { color: t.lineStrong } },
+        styleOverrides: { root: { color: t.controlLine } },
       },
       MuiFormControlLabel: {
         styleOverrides: { label: { fontSize: "0.875rem" } },

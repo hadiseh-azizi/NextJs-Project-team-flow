@@ -8,6 +8,7 @@ import AuthShell from "@/components/AuthShell";
 import Field from "@/components/FormField";
 import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
+import { validatePassword, PASSWORD_MIN_LENGTH } from "@/lib/passwordPolicy";
 
 function RegisterForm() {
   const searchParams = useSearchParams();
@@ -30,6 +31,11 @@ function RegisterForm() {
     e.preventDefault();
     if (loading) return;
     setError("");
+    const policy = validatePassword(password);
+    if (policy.error) {
+      setError(policy.error);
+      return;
+    }
     setLoading(true);
 
     try {
@@ -100,8 +106,8 @@ function RegisterForm() {
           type="password"
           autoComplete="new-password"
           required
-          inputProps={{ minLength: 6 }}
-          helperText="At least 6 characters"
+          inputProps={{ minLength: PASSWORD_MIN_LENGTH }}
+          helperText={`At least ${PASSWORD_MIN_LENGTH} characters`}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           sx={{ mb: 3 }}

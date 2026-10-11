@@ -221,6 +221,10 @@ function walk(dir, out = []) {
       if (allowed.has(rel)) continue;
       const lines = fs.readFileSync(f, "utf8").split("\n");
       lines.forEach((line, i) => {
+        // A CSS alpha mask (WebkitMask / mask) only reads the colour's
+        // transparency, never its hue, so a literal like #000 there is not
+        // a design colour and would be wrong to route through the palette.
+        if (/^\s*(WebkitMask|mask)\s*:/.test(line)) return;
         const code = line.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
         if (literal.test(code)) offenders.push(`${rel}:${i + 1}: ${line.trim().slice(0, 90)}`);
       });

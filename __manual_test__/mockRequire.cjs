@@ -32,6 +32,11 @@ function mockModule(specifier, exportsObj) {
 // already-loaded copy of the real modules under test, so each test file
 // starts with a clean require cache.
 function resetModuleCache() {
+  // lib/sessionRevocationCache.js keeps its shared cache on globalThis (so
+  // route handlers and server components see one instance); a fresh module
+  // load must also start with an empty one, or entries from an earlier test
+  // would leak into the next.
+  delete globalThis.__teamFlowSessionCache;
   for (const key of Object.keys(require.cache)) {
     if (key.startsWith(SRC_DIR) || key.includes("node_modules/next-auth") || key.includes("node_modules/mongoose")) {
       delete require.cache[key];

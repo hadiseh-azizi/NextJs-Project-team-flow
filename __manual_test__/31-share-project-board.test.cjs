@@ -18,11 +18,9 @@ const { makeFakeRateLimitModel } = require("./fakeRateLimitModel.cjs");
 //
 // Client-side offline caching (lib/sharedBoardCache.js, public/sw.js) and
 // the shared board page's own online/offline state machine are DOM/
-// Service-Worker/Cache-Storage-dependent and are exercised by the "manual
-// verification against a live browser" matrix documented alongside this
-// phase's changelog entry, not by this Node harness — consistent with
-// this project's standing "no browser-level test suite" limitation (see
-// CHANGELOG.md).
+// Service-Worker/Cache-Storage-dependent and need a live browser to verify and are not
+// exercised by this Node harness — consistent with this project's standing
+// "no browser-level test suite" limitation.
 
 const MANAGER_ID = "aaaaaaaaaaaaaaaaaaaaaaaa";
 const OTHER_USER_ID = "bbbbbbbbbbbbbbbbbbbbbbbb";
@@ -121,7 +119,7 @@ function fakeReq(headers = {}) {
   console.log("\nPOST/GET/DELETE /api/projects/[id]/share — manager-only settings route");
 
   function projectDoc(overrides = {}) {
-    return { _id: PROJECT_ID, manager: MANAGER_ID, shareEnabled: false, shareToken: null, ...overrides };
+    return { _id: PROJECT_ID, manager: MANAGER_ID, shareEnabled: false, ...overrides };
   }
 
   function setupShareSettingsMocks({ callerId = MANAGER_ID, project = projectDoc(), updateImpl } = {}) {
@@ -246,7 +244,7 @@ function fakeReq(headers = {}) {
     const json = await res.json();
     assert.strictEqual(res.status, 200, `expected 200, got ${res.status}: ${JSON.stringify(json)}`);
     assert.deepStrictEqual(json, { shareEnabled: false, shareUrl: null });
-    assert.deepStrictEqual(updateCalls[0].update, { $set: { shareEnabled: false, shareToken: null } });
+    assert.deepStrictEqual(updateCalls[0].update, { $set: { shareEnabled: false }, $unset: { shareToken: "" } });
   });
 
   // ------------------------------------------------------------------
@@ -263,9 +261,13 @@ function fakeReq(headers = {}) {
         return { lean: async () => (project && filter.shareToken === project.shareToken && filter.shareEnabled === true && project.shareEnabled ? project : null) };
       },
     });
-    mockModule("@/models/Column", { find: () => ({ sort: function () { return this; }, lean: async () => [] }) });
+    mockModule("@/models/Column", {
+      find: () => ({ sort: function () { return this; }, limit: function () { return this; }, lean: async () => [] }),
+      countDocuments: async () => 0,
+    });
     mockModule("@/models/Task", {
-      find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, lean: async () => [] }),
+      find: () => ({ select: function () { return this; }, populate: function () { return this; }, sort: function () { return this; }, limit: function () { return this; }, lean: async () => [] }),
+      aggregate: async () => [],
     });
     return { findOneCalls, rateLimitModel };
   }
@@ -309,7 +311,10 @@ function fakeReq(headers = {}) {
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/models/RateLimitAttempt", makeFakeRateLimitModel());
     mockModule("@/models/Project", { findOne: () => ({ lean: async () => ({ _id: PROJECT_ID, name: "X", shareEnabled: true, shareToken: "good-token" }) }) });
-    mockModule("@/models/Column", { find: () => ({ sort: function () { return this; }, lean: async () => [] }) });
+    mockModule("@/models/Column", {
+      find: () => ({ sort: function () { return this; }, limit: function () { return this; }, lean: async () => [] }),
+      countDocuments: async () => 0,
+    });
     let selectArg = null;
     mockModule("@/models/Task", {
       find: () => ({
@@ -319,8 +324,10 @@ function fakeReq(headers = {}) {
         },
         populate: function () { return this; },
         sort: function () { return this; },
+        limit: function () { return this; },
         lean: async () => [],
       }),
+      aggregate: async () => [],
     });
     const { GET } = require("../src/app/api/shared/board/[token]/route.js");
     await GET(fakeReq(), { params: Promise.resolve({ token: "good-token" }) });
@@ -343,17 +350,14 @@ function fakeReq(headers = {}) {
     assert.strictEqual(limited.status, 429);
   });
 
-  await test("requests with no determinable IP (untrusted/missing proxy header) are never rate-limited against each other", async () => {
+  await test("requests with no determinable IP share one fallback bucket and ARE rate-limited (H4 — was: never limited)", async () => {
     const rateLimitModel = makeFakeRateLimitModel();
     setupPublicRouteMocks({ project: { _id: PROJECT_ID, name: "X", shareEnabled: true, shareToken: "good-token" }, rateLimitModel });
     const { GET } = require("../src/app/api/shared/board/[token]/route.js");
     const req = fakeReq(); // no x-forwarded-for
-    let lastStatus;
-    for (let i = 0; i < 65; i++) {
-      const res = await GET(req, { params: Promise.resolve({ token: "good-token" }) });
-      lastStatus = res.status;
-    }
-    assert.strictEqual(lastStatus, 200);
+    const res = await GET(req, { params: Promise.resolve({ token: "good-token" }) });
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual([...rateLimitModel.__store.keys()], ["shared-board:no-ip-fallback"]);
   });
 
   summary();

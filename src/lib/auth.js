@@ -1,12 +1,15 @@
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
+import { verifyPassword } from "@/lib/passwordHash";
 import { connectDB } from "@/lib/mongodb";
 import User from "@/models/User";
 import { normalizeEmail } from "@/lib/normalizeEmail";
 import { getAuthSecret } from "@/lib/authSecret";
-import { checkRateLimit } from "@/lib/rateLimit";
+import { checkRateLimit, resetRateLimit } from "@/lib/rateLimit";
+import { emailRateLimitKey } from "@/lib/rateLimitKey";
+import { isWithinPasswordByteLimit } from "@/lib/passwordPolicy";
 import { getClientIp } from "@/lib/clientIp";
 import { consumeAutoLoginToken } from "@/lib/autoLoginToken";
+import { sessionCache, verifySessionToken } from "@/lib/sessionRevocationCache";
 
 // A precomputed bcrypt hash of a fixed, unused string — never compared
 // against a real password, and no real account uses it. Its only job is
@@ -21,14 +24,32 @@ import { consumeAutoLoginToken } from "@/lib/autoLoginToken";
 // the one used for real password hashes (see register/route.js).
 const DUMMY_PASSWORD_HASH = "$2a$12$umFwSnc/OJfL6r0Zcxv.3e6AudQMfHUgSwEHIkbrOu3qZtk/nN3WK";
 
-// Generous enough that a real user fumbling their password a few times
-// never notices, tight enough to make automated credential stuffing
-// impractical. Two keys: the attempted email (stops focused brute-forcing
-// of one account regardless of source) and the source IP (stops one
-// source spraying attempts across many accounts) — either one tripping
-// blocks the attempt.
-const LOGIN_EMAIL_LIMIT = { max: 10, windowMs: 15 * 60 * 1000 };
+// Login throttling (M3). The old design keyed the main limit on the
+// attempted email alone, so anyone could lock a victim out just by
+// submitting wrong passwords for the victim's address. Now three counters
+// are checked in this order, and a request stopped by one never touches
+// the ones after it:
+//
+//   1. IP (every attempt): stops one source spraying many accounts.
+//   2. email + IP (failed attempts; cleared on success): the brute-force
+//      limit for one account from one source. An attacker only ever
+//      exhausts the budget for THEIR OWN address; the victim, coming from
+//      a different IP, has a separate budget and keeps signing in.
+//   3. email alone: a deliberately high backstop against a distributed
+//      guesser rotating IPs. Because requests blocked by (1) or (2) never
+//      reach it, an attacker needs many distinct IPs to move it at all.
+//      If it does trip, the real owner can still use "Forgot password"
+//      (not governed by this limiter) rather than waiting out the window.
+//
+// When the client IP can't be determined (RATE_LIMIT_TRUST_PROXY=none),
+// (1) and (2) are impossible, so the previous email-only limit applies
+// unchanged — see README. Counters are keyed by the submitted address
+// whether or not an account exists, so none of this reveals which emails
+// are registered.
 const LOGIN_IP_LIMIT = { max: 30, windowMs: 15 * 60 * 1000 };
+const LOGIN_EMAIL_IP_LIMIT = { max: 10, windowMs: 15 * 60 * 1000 };
+const LOGIN_EMAIL_LIMIT = { max: 50, windowMs: 15 * 60 * 1000 };
+const LOGIN_EMAIL_ONLY_LIMIT = { max: 10, windowMs: 15 * 60 * 1000 }; // unknown-IP deployments
 
 // The auto-login path (see the branch at the top of authorize() below)
 // has no client-supplied email to key a limit on — by design, it never
@@ -40,7 +61,12 @@ const LOGIN_IP_LIMIT = { max: 30, windowMs: 15 * 60 * 1000 };
 const AUTO_LOGIN_IP_LIMIT = { max: 20, windowMs: 15 * 60 * 1000 };
 
 export const authOptions = {
-  secret: getAuthSecret(),
+  // A getter so NEXTAUTH_SECRET is checked when NextAuth reads its options
+  // for a request (still fail-fast, never an empty secret) instead of when
+  // this module is imported — `next build` imports it with no secret set.
+  get secret() {
+    return getAuthSecret();
+  },
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
   providers: [
@@ -89,7 +115,7 @@ export const authOptions = {
           // createAutoLoginToken() that doesn't make the same guarantee.
           if (!user || !user.emailVerified) return null;
 
-          return { id: String(user._id), name: user.name, email: user.email };
+          return { id: String(user._id), name: user.name, email: user.email, tokenVersion: user.tokenVersion ?? 0 };
         }
 
         if (typeof credentials?.email !== "string" || typeof credentials?.password !== "string") {
@@ -109,30 +135,91 @@ export const authOptions = {
         // `error` value on the client's signIn() result (see the
         // EmailNotVerified throw below), which is how the login page
         // tells this apart from "wrong password".
-        const emailLimit = await checkRateLimit(`login:email:${email}`, LOGIN_EMAIL_LIMIT);
-        const ipLimit = ip === "unknown" ? null : await checkRateLimit(`login:ip:${ip}`, LOGIN_IP_LIMIT);
-        if (emailLimit.limited || ipLimit?.limited) {
-          throw new Error("TooManyAttempts");
+        // L2: the email only ever enters a key as a fixed-length digest, so
+        // an oversized or odd-looking address can't bloat or shape a key.
+        const emailKey = emailRateLimitKey(email);
+        const pairKey = ip === "unknown" ? null : `login:pair:${emailKey}|${ip}`;
+        if (ip === "unknown") {
+          if ((await checkRateLimit(`login:email:${emailKey}`, LOGIN_EMAIL_ONLY_LIMIT)).limited) {
+            throw new Error("TooManyAttempts");
+          }
+        } else {
+          if ((await checkRateLimit(`login:ip:${ip}`, LOGIN_IP_LIMIT)).limited) {
+            throw new Error("TooManyAttempts");
+          }
+          if ((await checkRateLimit(pairKey, LOGIN_EMAIL_IP_LIMIT)).limited) {
+            throw new Error("TooManyAttempts");
+          }
+          if ((await checkRateLimit(`login:email:${emailKey}`, LOGIN_EMAIL_LIMIT)).limited) {
+            throw new Error("TooManyAttempts");
+          }
         }
 
         const user = await User.findOne({ email }).lean();
 
         // Always run a real bcrypt comparison, even when there's no user
         // to compare against — see DUMMY_PASSWORD_HASH above for why.
-        const valid = await bcrypt.compare(credentials.password, user?.passwordHash || DUMMY_PASSWORD_HASH);
-        if (!user || !valid) return null;
+        //
+        // M5: a password over bcrypt's 72-byte limit can never be one this
+        // app accepted at registration/reset, and bcrypt would silently
+        // compare only its first 72 bytes. It is treated as simply wrong —
+        // after the same dummy comparison, so timing doesn't change.
+        const withinLimit = isWithinPasswordByteLimit(credentials.password);
+        const valid = await verifyPassword(
+          withinLimit ? credentials.password : "x",
+          withinLimit && user?.passwordHash ? user.passwordHash : DUMMY_PASSWORD_HASH
+        );
+        if (!user || !valid || !withinLimit) return null;
+
+        // Correct password: the failed-attempt counter for this
+        // email+IP starts over.
+        if (pairKey) await resetRateLimit(pairKey);
 
         if (!user.emailVerified) {
           throw new Error("EmailNotVerified");
         }
 
-        return { id: String(user._id), name: user.name, email: user.email };
+        return { id: String(user._id), name: user.name, email: user.email, tokenVersion: user.tokenVersion ?? 0 };
       },
     }),
   ],
   callbacks: {
+    // M2: sessions are stateless JWTs, so revocation has to be checked on
+    // every use. At sign-in the user's current `tokenVersion` is stamped
+    // into the token; on every later call (each getServerSession and each
+    // /api/auth/session poll) it is compared with the user's current
+    // version. A password reset or change bumps the field, so every token
+    // issued before it stops matching. Throwing makes next-auth treat the
+    // request as signed-out and clear the cookie. A token with no stamp
+    // (issued before this check existed) is rejected too: accepting it
+    // would let a pre-reset token outlive the reset.
+    //
+    // H1: the current version is read from a short-lived per-process cache
+    // (lib/sessionRevocationCache.js) instead of a User.findById on every
+    // call. The cache holds only successful lookups for at most 10 s, is
+    // dropped immediately by the routes that bump the version / rename /
+    // delete a user, and is never used to reject a token or to excuse a
+    // database failure — a miss, an expired entry or a version mismatch
+    // goes to the database, and a lookup that fails rejects the session
+    // (fail closed). In another warm process a revoked token can therefore
+    // be honoured for up to that TTL; see the file's header for the full
+    // statement of the window.
     async jwt({ token, user }) {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        token.tv = user.tokenVersion ?? 0;
+        // authorize() just read these from the database, so the first
+        // requests after sign-in need no lookup.
+        sessionCache.set(String(user.id), { tokenVersion: user.tokenVersion ?? 0, name: user.name });
+        return token;
+      }
+      const { name } = await verifySessionToken(token, async (id) => {
+        await connectDB();
+        return User.findById(id).select("tokenVersion name").lean();
+      });
+      // The display name is edited on the Account page; it comes from the
+      // same (cached) read, so it stays current without a second query.
+      if (name) token.name = name;
       return token;
     },
     async session({ session, token }) {

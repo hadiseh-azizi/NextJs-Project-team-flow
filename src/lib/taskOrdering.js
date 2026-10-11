@@ -120,6 +120,11 @@ export function computeMovePlan({ movingId, siblingsAsc, targetIndex }) {
 // `targetIndex` of `undefined` means "append to the end" — used when a
 // caller changes a task's column without specifying a position (e.g. the
 // column dropdown in the task detail view).
+//
+// Returns `{ rebalanced }`: the `[{ id, order }]` of every sibling whose
+// order was rewritten (empty in the common case). The PATCH route passes
+// that on to the client so it can apply the moved task *and* any
+// renumbered siblings without refetching the whole project.
 export async function planTaskMove({ task, destColumnId, targetIndex, session }) {
   const siblings = await Task.find({ column: destColumnId, _id: { $ne: task._id } })
     .select("_id order createdAt")
@@ -138,4 +143,5 @@ export async function planTaskMove({ task, destColumnId, targetIndex, session })
 
   task.column = destColumnId;
   task.order = newOrder;
+  return { rebalanced: rebalanceOps.map(({ id, order }) => ({ id: String(id), order })) };
 }

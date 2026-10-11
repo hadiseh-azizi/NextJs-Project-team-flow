@@ -51,6 +51,11 @@ export const BRAND = {
 
     border: "#DCE3EE",
     borderStrong: "#C2CCDC",
+    // Outline of form controls (inputs, selects, outlined buttons, checkboxes).
+    // WCAG 1.4.11 asks 3:1 against the surface it sits on; border and
+    // borderStrong above are decorative dividers and stay as they were.
+    // 3.84:1 on surface, 3.58:1 on the page background.
+    controlBorder: "#74839B",
 
     text: "#0F1B2D",
     textSecondary: "#55647A",
@@ -84,6 +89,8 @@ export const BRAND = {
 
     border: "#24324A",
     borderStrong: "#34455F",
+    // See the light value. 4.35:1 on surface, 3.98:1 on the elevated surface.
+    controlBorder: "#6F809A",
 
     text: "#E8EEF7",
     textSecondary: "#A3B1C7",

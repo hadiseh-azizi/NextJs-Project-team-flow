@@ -34,6 +34,8 @@ function fakeReq(body) {
 // project/team GET-route tests.
 const fakeSerialize = {
   toProjectDTO: (project) => ({ id: String(project._id), name: project.name }),
+  // PATCH /api/projects/[id] now answers with the access summary (H3).
+  toProjectAccessDTO: (project) => ({ id: String(project._id), name: project.name }),
   toTeamDTO: (team) => ({ id: String(team._id), name: team.name }),
 };
 

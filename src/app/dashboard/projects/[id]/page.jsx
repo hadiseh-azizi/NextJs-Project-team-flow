@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Box, Typography, Button, Skeleton, Alert, Avatar, AvatarGroup, Tooltip,
 } from "@mui/material";
 import PageHeader from "@/components/PageHeader";
+import EmptyState from "@/components/EmptyState";
 import { useThemeMode } from "@/components/ThemeModeContext";
 import { pastelForString } from "@/lib/pastelColor";
 import { projectColorForId } from "@/lib/entityColor";
@@ -24,17 +26,29 @@ import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted, useLatestRequest } from "@/lib/clientAsync";
 import { projectProgress } from "@/lib/taskCompletion";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import * as projectState from "@/lib/projectState";
+import KanbanBoardSkeleton, { ProjectHeaderSkeleton } from "@/components/KanbanBoardSkeleton";
+import TeamFlowLoader from "@/components/TeamFlowLoader";
+import { boardShapeFromProject, readRememberedShape, readStoredShape, rememberShape } from "@/lib/loadShapeCache";
+
+// The branded loader only appears if loading is still going after this
+// long, so a fast response does not flash a spinner for a few frames.
+const LOADER_DELAY_MS = 200;
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const { mode } = useThemeMode();
   const isMounted = useIsMounted();
   const nextRequest = useLatestRequest();
   const [project, setProject] = useState(null);
   useDocumentTitle(project?.name, "Project");
   const [loadError, setLoadError] = useState("");
+  // The project doesn't exist, or this person can't open it. The API says
+  // 404 or 403; the page treats both as "not found" so it doesn't confirm
+  // whether a project they can't see exists.
+  const [notFoundState, setNotFoundState] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -43,33 +57,174 @@ export default function ProjectDetailPage() {
   const [renameError, setRenameError] = useState("");
   const [membersOpen, setMembersOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const userId = session?.user?.id;
+  // How this board looked the last time it loaded (this tab, this account):
+  // its columns and the tasks in each. null when there is nothing to go on.
+  const [storedShape, setRememberedShape] = useState(() => readRememberedShape("board", userId, id));
+  // A project with no columns has no board to draw (the real page shows
+  // its "No board yet" state), so it is treated as not remembered.
+  const rememberedShape = storedShape && storedShape.columns.length > 0 ? storedShape : null;
+  const [showLoader, setShowLoader] = useState(false);
+  // Set once a placeholder board has been drawn, so the real board can
+  // take its place without replaying its entrance animation.
+  const skeletonShown = useRef(false);
 
-  // KanbanBoard triggers this same reload after every task/column change
-  // (drag, add, rename, delete...). Those can fire in quick succession —
-  // a slow response to an earlier reload should never overwrite state from
-  // a faster, more recent one, so each call is tagged and only the latest
+  // The full reload. The board no longer calls it after every change: a
+  // mutation that returns the entity it changed is applied locally (see
+  // applyLocal below). What still reaches it: the first load, Retry, a
+  // reload because a local change could not be applied safely, and the
+  // board's own recovery after a conflict (409). Reloads can still overlap
+  // — a slow response to an earlier one should never overwrite state from
+  // a faster, more recent one — so each call is tagged and only the latest
   // is allowed to apply its result.
+  const loadsInFlight = useRef(0);
   async function load() {
     const isCurrent = nextRequest();
+    loadsInFlight.current += 1;
     try {
       const data = await apiFetch(`/api/projects/${id}`);
       if (!isMounted() || !isCurrent()) return;
       setProject(data);
       setLoadError("");
+      setNotFoundState(false);
     } catch (err) {
       if (!isMounted() || !isCurrent()) return;
       if (err.status === 401) {
         router.push("/login");
         return;
       }
+      if (err.status === 404 || err.status === 403) {
+        setNotFoundState(true);
+        return;
+      }
       setLoadError(errorMessage(err, "Couldn't load this project. Please try again."));
+    } finally {
+      loadsInFlight.current -= 1;
     }
   }
 
+  // Applies a change the server has already confirmed to this page's copy
+  // of the project, instead of refetching the whole project. `update` is
+  // one of the pure functions in lib/projectState.js. Only called after a
+  // successful response, so a failed request never reaches it and the UI
+  // is never updated as if it had succeeded.
+  //
+  // If a reload is already on its way it may have been read before this
+  // change, and applying the change now could be undone when it lands, so
+  // that case reloads again instead (which also makes the earlier reload
+  // stale — see load()).
+  const projectRef = useRef(null);
+  projectRef.current = project;
+  function applyLocal(update) {
+    if (loadsInFlight.current > 0) {
+      load();
+      return;
+    }
+    setProject((prev) => (prev ? update(prev) : prev));
+  }
+
+  // A saved task change (title, description, due date, color, assignees,
+  // completion, attachments): only the fields that save touched are
+  // replaced, so two quick saves to different fields can't undo each other.
+  function patchTask(taskId, fields) {
+    applyLocal((p) => projectState.patchTask(p, taskId, fields));
+  }
+
+  // A created task. If its column isn't on this board (it was removed
+  // here meanwhile, or the board is out of step) the board is reloaded
+  // rather than showing a task with no column.
+  function taskCreated(task) {
+    if (!projectState.hasColumn(projectRef.current, task.columnId)) {
+      load();
+      return;
+    }
+    applyLocal((p) => projectState.addTask(p, task));
+  }
+
+  function taskRemoved(taskId) {
+    applyLocal((p) => projectState.removeTask(p, taskId));
+  }
+
+  // A move: the moved task's column and order, plus any siblings the
+  // server had to renumber (carried on the response).
+  function taskMoved(moved) {
+    if (!projectState.hasColumn(projectRef.current, moved.columnId)) {
+      load();
+      return;
+    }
+    applyLocal((p) => projectState.applyTaskMove(p, moved));
+  }
+
+  function columnAdded(column) {
+    applyLocal((p) => projectState.addColumn(p, column));
+  }
+
+  function columnPatched(columnId, fields) {
+    applyLocal((p) => projectState.patchColumn(p, columnId, fields));
+  }
+
+  function columnRemoved(columnId) {
+    applyLocal((p) => projectState.removeColumn(p, columnId));
+  }
+
+  function columnsReordered(columns) {
+    applyLocal((p) => projectState.applyColumnOrder(p, columns));
+  }
+
+  // The project name, editing mode, member list or editor list changed
+  // (rename, "Manage access" dialog). `scope` says which of them, and only
+  // those are taken from the response — see ACCESS_SCOPES.
+  function accessChanged(data, scope, options) {
+    applyLocal((p) => projectState.applyAccessResult(p, data, scope, options));
+  }
+
   useEffect(() => {
+    setNotFoundState(false);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const isManagerNow = !!project && userId === project.manager.id;
+  const canEditNow =
+    !!project &&
+    (isManagerNow ||
+      project.editingMode !== "manager_approval" ||
+      project.editors.some((e) => e.id === userId));
+
+  // After a full reload the in-memory shape is gone but the tab's
+  // sessionStorage copy is not; read it once the user id is known (never
+  // during render, which would not match the server).
+  useEffect(() => {
+    skeletonShown.current = false;
+    setRememberedShape(readStoredShape("board", userId, id));
+  }, [userId, id]);
+
+  // Remember the shape after every successful load and change.
+  useEffect(() => {
+    if (project && userId) {
+      rememberShape("board", userId, id, boardShapeFromProject(project, canEditNow, isManagerNow, window.innerWidth));
+    }
+  }, [project, userId, id, canEditNow, isManagerNow]);
+
+  // A placeholder board is on screen: remember it, so the real board can
+  // appear in its place without replaying its entrance animation.
+  useEffect(() => {
+    if (!project && rememberedShape) skeletonShown.current = true;
+  }, [project, rememberedShape]);
+
+  // Delay the branded loader slightly (see LOADER_DELAY_MS). While the
+  // session is still loading the user id is unknown, so a remembered shape
+  // cannot be looked up yet: wait for it rather than flash the loader and
+  // then swap it for the placeholder board.
+  const waitingWithoutShape = !project && !loadError && !rememberedShape && sessionStatus !== "loading";
+  useEffect(() => {
+    if (!waitingWithoutShape) {
+      setShowLoader(false);
+      return undefined;
+    }
+    const t = setTimeout(() => setShowLoader(true), LOADER_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [waitingWithoutShape]);
 
   async function confirmDeleteProject() {
     if (deleting) return;
@@ -100,9 +255,9 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ name: newName }),
       });
       if (!isMounted()) return;
-      // The route returns the full project DTO, so the new name (and
-      // everything else) shows up immediately without a separate reload.
-      setProject(data);
+      // The route returns the access summary; only the name is taken from
+      // it, and it shows up immediately without a reload.
+      accessChanged(data, "rename");
       setRenameOpen(false);
     } catch (err) {
       if (!isMounted()) return;
@@ -110,6 +265,20 @@ export default function ProjectDetailPage() {
     } finally {
       if (isMounted()) setRenaming(false);
     }
+  }
+
+  if (notFoundState) {
+    return (
+      <EmptyState
+        title="Project not found"
+        description="It may have been deleted, or you may not have access to it."
+        action={
+          <Button component={Link} href="/dashboard/projects" variant="contained">
+            Back to projects
+          </Button>
+        }
+      />
+    );
   }
 
   if (loadError && !project) {
@@ -120,17 +289,34 @@ export default function ProjectDetailPage() {
     );
   }
 
-  if (!project) {
+  // Permissions are worked out from the signed-in user, so nothing that
+  // depends on them is drawn until the session is known (the dashboard
+  // layout normally hands it over already, so this is a safety net).
+  if (!project || sessionStatus === "loading") {
     return (
-      <Box aria-busy="true" aria-label="Loading project">
-        <Skeleton variant="text" width={64} height={20} />
-        <Skeleton variant="text" width="40%" height={44} />
-        <Skeleton variant="text" width="60%" height={22} sx={{ mb: 3 }} />
-        <Box sx={{ display: "flex", gap: 2, overflow: "hidden" }}>
-          {[0, 1, 2].map((i) => (
-            <Skeleton key={i} variant="rounded" height={280} sx={{ flex: "0 0 288px", borderRadius: 2 }} />
-          ))}
-        </Box>
+      <Box>
+        {rememberedShape ? (
+          <ProjectHeaderSkeleton shape={rememberedShape} />
+        ) : (
+          <Box aria-hidden>
+            <Skeleton variant="text" width={64} height={20} />
+            <Skeleton variant="text" width="40%" height={44} />
+            <Skeleton variant="text" width="60%" height={22} sx={{ mb: 3 }} />
+          </Box>
+        )}
+        {rememberedShape ? (
+          // Shape remembered from the last load -> the same columns with
+          // the same number of tasks in each, drawn like the real cards.
+          // Not known -> the Team Flow loader (after a short delay) and no
+          // placeholders: we do not guess.
+          <Box role="status" aria-busy="true" aria-label="Loading project" className="tf-fade-in">
+            <KanbanBoardSkeleton shape={rememberedShape} projectId={id} />
+          </Box>
+        ) : showLoader ? (
+          <TeamFlowLoader label="Loading project" />
+        ) : (
+          <Box aria-busy="true" sx={{ minHeight: 240 }} />
+        )}
       </Box>
     );
   }
@@ -239,8 +425,17 @@ export default function ProjectDetailPage() {
         columns={project.columns}
         tasks={project.tasks}
         onChanged={load}
+        onTaskPatched={patchTask}
+        onTaskCreated={taskCreated}
+        onTaskMoved={taskMoved}
+        onTaskRemoved={taskRemoved}
+        onColumnAdded={columnAdded}
+        onColumnPatched={columnPatched}
+        onColumnRemoved={columnRemoved}
+        onColumnsReordered={columnsReordered}
         assignableUsers={assignableUsers}
         canEdit={canEdit}
+        animateEntrance={!skeletonShown.current}
       />
 
       <ConfirmDialog
@@ -280,7 +475,7 @@ export default function ProjectDetailPage() {
           projectMembers={project.members}
           editingMode={project.editingMode}
           editors={project.editors}
-          onChanged={setProject}
+          onChanged={accessChanged}
         />
       )}
 

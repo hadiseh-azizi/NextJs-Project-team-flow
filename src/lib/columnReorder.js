@@ -21,10 +21,13 @@ export function validateColumnOrderPayload(value, isValidId) {
     if (typeof raw !== "string" || !isValidId(raw)) {
       return { error: "columnOrder contains an invalid column id" };
     }
-    if (seen.has(raw)) return { error: "columnOrder contains a duplicate column id" };
-    seen.add(raw);
+    // Compared in lower case (the form stored ids print in), so an id sent
+    // in upper case can neither duplicate nor miss a stored column.
+    const canonical = raw.toLowerCase();
+    if (seen.has(canonical)) return { error: "columnOrder contains a duplicate column id" };
+    seen.add(canonical);
   }
-  return { value: [...value] };
+  return { value: value.map((raw) => raw.toLowerCase()) };
 }
 
 // Compares the requested order against the project's real columns.

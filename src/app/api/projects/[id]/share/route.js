@@ -3,9 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Project from "@/models/Project";
-import { isValidObjectId } from "@/lib/objectId";
 import { generateShareToken } from "@/lib/shareToken";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
+import { loadProjectAsManager as loadManagedProject } from "@/lib/projectQueries";
 
 // Kept separate from the main project DTO (see lib/serialize.js's
 // toProjectDTO) on purpose: only the manager should ever see the share
@@ -21,18 +21,8 @@ function shareStatus(project) {
   };
 }
 
-async function loadProjectAsManager(id, userId) {
-  if (!isValidObjectId(id)) return { error: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
-
-  const project = await Project.findById(id).lean();
-  if (!project) return { error: NextResponse.json({ error: "Project not found" }, { status: 404 }) };
-
-  if (String(project.manager) !== userId) {
-    return { error: NextResponse.json({ error: "Only the project manager can manage sharing" }, { status: 403 }) };
-  }
-
-  return { project };
-}
+const loadProjectAsManager = (id, userId) =>
+  loadManagedProject(id, userId, { forbiddenMessage: "Only the project manager can manage sharing" });
 
 // Current sharing status — used to populate the Share dialog whenever the
 // manager opens it, including after a page reload (the link itself is
@@ -83,7 +73,7 @@ export async function POST(req, { params }) {
   });
 }
 
-// Disables sharing and clears the token in the same update, so this one
+// Disables sharing and removes the token in the same update, so this one
 // action is both "Disable Sharing" and an immediate revoke — a link
 // captured before this call stops working the instant it lands, and
 // turning sharing back on later always starts from a fresh token rather
@@ -99,7 +89,11 @@ export async function DELETE(req, { params }) {
   if (error) return error;
 
   return withMongoErrorHandling(async () => {
-    await Project.updateOne({ _id: id }, { $set: { shareEnabled: false, shareToken: null } });
+    // $unset (not `shareToken: null`): the unique sparse index on
+    // shareToken indexes an explicit null, so a second project that
+    // disabled sharing would fail with E11000. Removing the field keeps
+    // it out of the index.
+    await Project.updateOne({ _id: id }, { $set: { shareEnabled: false }, $unset: { shareToken: "" } });
     return NextResponse.json({ shareEnabled: false, shareUrl: null });
   });
 }

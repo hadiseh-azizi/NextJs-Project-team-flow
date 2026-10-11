@@ -121,6 +121,9 @@ function team() {
       resetModuleCache();
       const calls = [];
       mockModule("@/models/Project", { updateOne: async (f, u) => { calls.push(u); } });
+      // Removal also clears task assignments (M10), in a transaction; stub both.
+      mockModule("@/models/Task", { updateMany: async () => {} });
+      mockModule("@/lib/mongoTransaction", { withOptionalTransaction: async (fn) => fn(null) });
       const { applyProjectMembership } = require("../src/lib/authz.js");
       await applyProjectMembership({ _id: PROJECT_ID, members: [EDITOR_ID], team: team() }, EDITOR_ID, "remove");
       assert.deepStrictEqual(calls[calls.length - 1], { $pull: { members: EDITOR_ID, editors: EDITOR_ID } });
@@ -360,6 +363,19 @@ function team() {
       for (const f of ["models/ChangeRequest.js", "components/RequestChangeDialog.jsx", "components/ChangeRequestsPanel.jsx", "app/api/projects/[id]/change-requests"]) {
         assert.ok(!fs.existsSync(path.join(__dirname, "../src", f)), f + " should not exist");
       }
+    });
+    await test("no source file references the removed change-request feature", async () => {
+      const root = path.join(__dirname, "../src");
+      const stale = /ChangeRequest|toChangeRequestDTO|RequestChangeDialog|ChangeRequestsPanel|change-requests/;
+      const hits = [];
+      (function walk(dir) {
+        for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, e.name);
+          if (e.isDirectory()) walk(full);
+          else if (/\.(js|jsx)$/.test(e.name) && stale.test(fs.readFileSync(full, "utf8"))) hits.push(path.relative(root, full));
+        }
+      })(root);
+      assert.deepStrictEqual(hits, []);
     });
   }
 

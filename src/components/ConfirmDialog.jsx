@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button, Alert } from "@mui/material";
+import Field from "@/components/FormField";
 
 export default function ConfirmDialog({
   open,
@@ -17,12 +19,31 @@ export default function ConfirmDialog({
   onClose,
   loading = false,
   error = "",
+  // When set, the confirm button stays disabled until this exact text is
+  // typed (used for deletions that take other things with them).
+  requireText = "",
 }) {
+  const [typed, setTyped] = useState("");
+  useEffect(() => {
+    if (open) setTyped("");
+  }, [open]);
+  const blocked = !!requireText && typed.trim() !== requireText.trim();
+
   return (
     <Dialog open={open} onClose={loading ? undefined : onClose} maxWidth="xs" fullWidth>
       <DialogTitle>{title}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ overflowWrap: "anywhere" }}>{message}</DialogContentText>
+        {requireText && (
+          <Field
+            label={`Type “${requireText}” to confirm`}
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            disabled={loading}
+            autoComplete="off"
+            sx={{ mt: 2 }}
+          />
+        )}
         {error && (
           <Alert severity="error" className="tf-shake" sx={{ mt: 2 }}>
             {error}
@@ -36,7 +57,7 @@ export default function ConfirmDialog({
         <Button onClick={onClose} color="inherit" disabled={loading} autoFocus>
           Cancel
         </Button>
-        <Button onClick={onConfirm} color={confirmColor} variant="contained" disabled={loading}>
+        <Button onClick={onConfirm} color={confirmColor} variant="contained" disabled={loading || blocked}>
           {loading ? loadingLabel : confirmLabel}
         </Button>
       </DialogActions>

@@ -7,7 +7,7 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // in-memory Column store that ENFORCES the real unique (project, order)
 // index on every write — so a naive "assign 0..n-1 in one pass" would
 // fail here exactly as it would against MongoDB. Not a substitute for
-// live Atlas verification (see CHANGELOG.md); no browser is involved.
+// live Atlas verification; no browser is involved.
 
 const ID = (n) => String(n).padStart(24, "0"); // valid ObjectId-shaped ids
 const MANAGER = "u_manager";

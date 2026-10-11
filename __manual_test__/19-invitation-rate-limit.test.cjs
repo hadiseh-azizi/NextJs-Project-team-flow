@@ -3,8 +3,8 @@ const { test, summary, assert } = require("./harness.cjs");
 const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 const { makeFakeRateLimitModel } = require("./fakeRateLimitModel.cjs");
 
-// Final Release Cleanup phase — invitation-email abuse protection (see
-// FINAL_RELEASE_CLEANUP.md). Covers POST /api/teams/[id]/members:
+// Final Release Cleanup phase — invitation-email abuse protection.
+// Covers POST /api/teams/[id]/members:
 //   - authorization is unaffected by (and still enforced ahead of) the
 //     new rate limiting
 //   - per-manager, per-team, and per-IP invitation limits
@@ -200,7 +200,7 @@ function inviteBody(email) {
     assert.strictEqual(second.status, 409);
   });
 
-  await test("adding an existing user (no email sent) is never rate-limited by the invitation limiter", async () => {
+  await test("M4: an existing account is invited (emailed, not added directly) and counts against the invitation limiter like any other address", async () => {
     resetModuleCache();
     mockModule("@/lib/mongodb", { connectDB: async () => {} });
     mockModule("@/models/RateLimitAttempt", makeFakeRateLimitModel());
@@ -220,20 +220,24 @@ function inviteBody(email) {
         },
         lean: async () => team,
       }),
-      updateOne: async () => ({ modifiedCount: 1 }),
+      updateOne: async () => { directlyAdded = true; return { modifiedCount: 1 }; },
     });
+    let directlyAdded = false;
     let emailSent = false;
     mockModule("@/lib/email", { sendTeamInviteEmail: async () => { emailSent = true; } });
     mockModule("@/models/Invitation", { findOne: () => ({ lean: async () => null }), create: async () => {} });
     mockModule("@/models/User", {
       findOne: () => ({ lean: async () => ({ _id: EXISTING_MEMBER_ID }) }),
+      findById: () => ({ select: () => ({ lean: async () => ({ name: "Mgr" }) }) }),
     });
 
     const { POST } = require("../src/app/api/teams/[id]/members/route.js");
     const res = await POST(fakeReq(inviteBody("existing@example.com")), { params: Promise.resolve({ id: TEAM_ID }) });
     const json = await res.json();
     assert.strictEqual(res.status, 201, `expected 201, got ${res.status}: ${JSON.stringify(json)}`);
-    assert.strictEqual(emailSent, false);
+    assert.strictEqual(json.status, "invited");
+    assert.strictEqual(directlyAdded, false, "an existing account is never added to the team directly");
+    assert.strictEqual(emailSent, true, "it is invited by email like any other address");
   });
 
   summary();

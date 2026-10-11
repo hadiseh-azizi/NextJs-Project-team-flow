@@ -6,7 +6,7 @@ import Column from "@/models/Column";
 import Task from "@/models/Task";
 import { toTaskDTO } from "@/lib/serialize";
 import { getTaskAccess, validateAssignees, canEditProject } from "@/lib/authz";
-import { isValidObjectId } from "@/lib/objectId";
+import { isValidObjectId, normalizeObjectId } from "@/lib/objectId";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import {
   validateRequiredString,
@@ -19,9 +19,8 @@ import {
 import { TASK_COLORS } from "@/lib/taskColors";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
 import { planTaskMove, withOptionalTransaction } from "@/lib/taskOrdering";
+import { MAX_TASK_TITLE_LENGTH, MAX_TASK_DESCRIPTION_LENGTH } from "@/lib/fieldLimits";
 
-const MAX_TASK_TITLE_LENGTH = 200;
-const MAX_TASK_DESCRIPTION_LENGTH = 5000;
 const TASK_COLOR_KEYS = TASK_COLORS.map((c) => c.key);
 
 export async function PATCH(req, { params }) {
@@ -67,9 +66,9 @@ export async function PATCH(req, { params }) {
     if (!isValidObjectId(body.columnId)) {
       return NextResponse.json({ error: "Invalid column" }, { status: 400 });
     }
-    const column = await Column.findOne({ _id: body.columnId, project: project._id }).lean();
+    const column = await Column.findOne({ _id: normalizeObjectId(body.columnId), project: project._id }).lean();
     if (!column) return NextResponse.json({ error: "Column not found" }, { status: 404 });
-    destColumnId = body.columnId;
+    destColumnId = normalizeObjectId(body.columnId);
   }
   if (body.targetIndex !== undefined) {
     const targetIndexResult = validateInteger(body.targetIndex, { field: "Position", min: 0, max: 100_000 });
@@ -122,6 +121,9 @@ export async function PATCH(req, { params }) {
   }
 
   return withMongoErrorHandling(async () => {
+    // Siblings whose order a move had to rewrite (see planTaskMove). Reset
+    // on every attempt: a transaction callback can be retried.
+    let rebalanced = [];
     if (destColumnId !== undefined) {
       // Column/order assignment and the save both happen inside one
       // transaction (falls back to a plain write if the server doesn't
@@ -130,7 +132,9 @@ export async function PATCH(req, { params }) {
       // half-applied, and no other request can observe this task between
       // "position decided" and "position saved".
       await withOptionalTransaction(async (session) => {
-        await planTaskMove({ task, destColumnId, targetIndex, session });
+        rebalanced = [];
+        const plan = await planTaskMove({ task, destColumnId, targetIndex, session });
+        rebalanced = plan?.rebalanced ?? [];
         await task.save({ session: session ?? undefined });
       });
     } else {
@@ -143,7 +147,15 @@ export async function PATCH(req, { params }) {
       .select("-attachments.data")
       .populate("assignees", "name")
       .lean();
-    return NextResponse.json(toTaskDTO(populated));
+    // The task, exactly as before. When the move had to renumber the
+    // destination column's other tasks (rare: only when two neighbors ran
+    // out of integer room), `reorderedSiblings` also lists their new
+    // orders so the client can apply them instead of refetching the board.
+    // The field is absent otherwise, so every other response is unchanged.
+    return NextResponse.json({
+      ...toTaskDTO(populated),
+      ...(rebalanced.length > 0 ? { reorderedSiblings: rebalanced } : {}),
+    });
   });
 }
 

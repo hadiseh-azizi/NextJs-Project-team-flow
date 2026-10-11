@@ -4,6 +4,10 @@
 process.env.MONGODB_URI ||= "mongodb+srv://user:pass@cluster.mongodb.net/teamflow-test";
 process.env.NEXTAUTH_SECRET ||= "test-secret-not-for-prod";
 process.env.NEXTAUTH_URL ||= "http://localhost:3000";
+// Many files mock "bcryptjs" with fast fakes; src/lib/passwordHash.js would
+// otherwise prefer the native bcrypt addon and bypass them. Files that test
+// the native path set this themselves (see 59-*).
+process.env.PASSWORD_HASHER ||= "bcryptjs";
 
 require("@babel/register").default({
   configFile: __dirname + "/babel.config.cjs",

@@ -17,21 +17,16 @@ import { apiFetch, errorMessage } from "@/lib/apiFetch";
 import { useIsMounted } from "@/lib/clientAsync";
 import {
   MAX_FILE_SIZE,
-  MAX_TOTAL_ATTACHMENTS_SIZE,
+  MAX_FILE_SIZE_MB,
+  MAX_CREATE_ATTACHMENTS_SIZE,
+  MAX_CREATE_ATTACHMENTS_SIZE_MB,
   MAX_ATTACHMENTS_PER_TASK,
   ALLOWED_TYPES_SUMMARY,
   ATTACHMENT_ACCEPT,
   isAllowedAttachmentExtension,
 } from "@/lib/attachmentPolicy";
+import { formatSize } from "@/lib/formatSize";
 
-function formatSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
-const MAX_TOTAL_SIZE_MB = MAX_TOTAL_ATTACHMENTS_SIZE / (1024 * 1024);
 
 export default function NewTaskModal({ projectId, columnId, columnName, assignableUsers, onClose, onCreated }) {
   const isMounted = useIsMounted();
@@ -76,8 +71,8 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
         setFileError(`"${file.name}" is larger than the ${MAX_FILE_SIZE_MB}MB limit per file.`);
         continue;
       }
-      if (runningTotal + file.size > MAX_TOTAL_ATTACHMENTS_SIZE) {
-        setFileError(`Adding "${file.name}" would exceed the ${MAX_TOTAL_SIZE_MB}MB total attachment limit.`);
+      if (runningTotal + file.size > MAX_CREATE_ATTACHMENTS_SIZE) {
+        setFileError(`Adding "${file.name}" would exceed the ${MAX_CREATE_ATTACHMENTS_SIZE_MB}MB limit for a new task. You can add more files after creating it.`);
         continue;
       }
       runningTotal += file.size;
@@ -109,19 +104,21 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
       // Only sent as multipart when there are files to carry — a plain
       // JSON body (the original, still-supported request shape) is used
       // for every task created without attachments.
+      let created;
       if (files.length > 0) {
         const formData = new FormData();
         formData.append("data", JSON.stringify(fields));
         for (const file of files) formData.append("files", file);
-        await apiFetch("/api/tasks", { method: "POST", body: formData });
+        created = await apiFetch("/api/tasks", { method: "POST", body: formData });
       } else {
-        await apiFetch("/api/tasks", {
+        created = await apiFetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(fields),
         });
       }
-      onCreated();
+      // The response is the created task; the board adds it in place.
+      onCreated(created);
       onClose();
     } catch (err) {
       if (isMounted()) setError(errorMessage(err, "Couldn't create the task. Please try again."));
@@ -225,7 +222,7 @@ export default function NewTaskModal({ projectId, columnId, columnName, assignab
           </Box>
 
           <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 1 }}>
-            {ALLOWED_TYPES_SUMMARY} · up to {MAX_FILE_SIZE_MB}MB per file · {MAX_TOTAL_SIZE_MB}MB total
+            {ALLOWED_TYPES_SUMMARY} · up to {MAX_FILE_SIZE_MB}MB per file · {MAX_CREATE_ATTACHMENTS_SIZE_MB}MB total
             {files.length > 0 && ` · ${files.length}/${MAX_ATTACHMENTS_PER_TASK} files`}
           </Typography>
 

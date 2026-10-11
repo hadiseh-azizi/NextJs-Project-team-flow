@@ -8,22 +8,27 @@ import { useReducedMotion } from "@/lib/useReducedMotion";
 import { STOPS } from "@/lib/brand";
 
 const ROW_HEIGHT = 36;
+
+function isProgress(v) {
+  return !!v && Number.isFinite(v.total) && Number.isFinite(v.done) && Number.isFinite(v.pct);
+}
 const MAX_NAME = 18;
 
 export default function ProgressChart({ projects }) {
   const theme = useTheme();
   const reducedMotion = useReducedMotion();
 
-  // The props come from toProjectDTO(), which always supplies `tasks`,
-  // `columns` and `name` — but a single malformed entry (or a missing
+  // The props come from the dashboard page, which always supplies `name`
+  // and `progress` — but a single malformed entry (or a missing
   // `projects` prop) used to throw during render, and because this is a
   // client component that takes the whole dashboard down with it rather
   // than just the chart. Missing pieces now count as "none" instead.
   const data = (Array.isArray(projects) ? projects : [])
     .filter(Boolean)
     .map((p) => {
-      const tasks = Array.isArray(p.tasks) ? p.tasks : [];
-      const { total, done, pct } = projectProgress(tasks);
+      // The dashboard sends precomputed counts (`progress`); a project that
+      // carries a task list instead is still counted from it.
+      const { total, done, pct } = isProgress(p.progress) ? p.progress : projectProgress(Array.isArray(p.tasks) ? p.tasks : []);
       const name = typeof p.name === "string" && p.name ? p.name : "Untitled";
       return {
         fullName: name,

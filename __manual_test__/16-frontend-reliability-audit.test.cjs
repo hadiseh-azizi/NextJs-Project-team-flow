@@ -1,5 +1,4 @@
-// Frontend Reliability, API Error Handling & Stale-State audit — see
-// FRONTEND_RELIABILITY_AUDIT.md and CHANGELOG.md.
+// Frontend Reliability, API Error Handling & Stale-State audit.
 //
 // Scope note: this repo's manual test harness (see __manual_test__/README.md)
 // loads real source modules under Node with small in-memory fakes for
@@ -21,9 +20,8 @@
 //   - The attachment download link's `target="_blank"` and the
 //     handleToggleDoneColumn in-flight guard are both single-line,
 //     low-risk changes verified by inspection.
-// These three are flagged in FRONTEND_RELIABILITY_AUDIT.md's manual
-// verification section (a browser-level smoke test, same category as the
-// multi-tab drag test already listed there from the prior phase).
+// These three need a browser-level smoke test (the same category as a
+// multi-tab drag test) and are not covered by this harness.
 require("./register.cjs");
 const { test, summary, assert } = require("./harness.cjs");
 

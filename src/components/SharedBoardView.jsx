@@ -98,7 +98,7 @@ function ReadOnlyTaskCard({ task }) {
               )}
             </Box>
             {task.assignees.length > 0 && (
-              <AvatarGroup max={4} sx={{ "& .MuiAvatar-root": { width: 22, height: 22, fontSize: 11, borderColor: cardColor || "background.paper" } }}>
+              <AvatarGroup max={4} total={task.assigneeCount ?? task.assignees.length} sx={{ "& .MuiAvatar-root": { width: 22, height: 22, fontSize: 11, borderColor: cardColor || "background.paper" } }}>
                 {task.assignees.map((a) => (
                   <Tooltip key={a.id} title={a.name || "Unnamed"}>
                     <Avatar aria-label={a.name || "Unnamed"} sx={{ bgcolor: pastelForString(a.id, mode) }}>
@@ -144,6 +144,11 @@ export default function SharedBoardView({ columns, tasks }) {
     >
       {sortedColumns.map((column) => {
         const colTasks = tasks.filter((t) => t.columnId === column.id).sort(compareTasks);
+        // The server may send only the first tasks of a very large column;
+        // `taskCount` is the real number (absent in a copy cached before
+        // that existed, where everything was sent).
+        const totalInColumn = column.taskCount ?? colTasks.length;
+        const hiddenInColumn = Math.max(0, totalInColumn - colTasks.length);
         return (
           <Box key={column.id} sx={{ flex: { xs: "0 0 84%", sm: "0 0 288px" } }}>
             <Box
@@ -164,9 +169,9 @@ export default function SharedBoardView({ columns, tasks }) {
                   variant="caption"
                   color="text.secondary"
                   sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", px: 0.25 }}
-                  aria-label={`${colTasks.length} ${colTasks.length === 1 ? "task" : "tasks"}`}
+                  aria-label={`${totalInColumn} ${totalInColumn === 1 ? "task" : "tasks"}`}
                 >
-                  {colTasks.length}
+                  {totalInColumn}
                 </Typography>
               </Box>
 
@@ -174,9 +179,14 @@ export default function SharedBoardView({ columns, tasks }) {
                 {colTasks.map((task) => (
                   <ReadOnlyTaskCard key={task.id} task={task} />
                 ))}
-                {colTasks.length === 0 && (
+                {colTasks.length === 0 && totalInColumn === 0 && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 1, py: 1.5 }}>
                     No tasks yet
+                  </Typography>
+                )}
+                {hiddenInColumn > 0 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: "block", px: 1, py: 0.75 }}>
+                    Showing {colTasks.length} of {totalInColumn} tasks
                   </Typography>
                 )}
               </Box>

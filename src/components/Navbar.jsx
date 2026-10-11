@@ -104,7 +104,25 @@ export default function Navbar({ userName }) {
 
         <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.5, sm: 1 }, flexShrink: 0 }}>
           <ThemeToggleButton />
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1, pl: { xs: 0.5, sm: 1 } }}>
+          <Box
+            component={Link}
+            href="/dashboard/account"
+            aria-label="Account"
+            aria-current={pathname === "/dashboard/account" ? "page" : undefined}
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              ml: { xs: 0.5, sm: 1 },
+              px: 0.75,
+              py: 0.5,
+              borderRadius: 0.5,
+              color: "inherit",
+              textDecoration: "none",
+              "&:hover": { backgroundColor: "action.hover" },
+              "&:focus-visible": { outline: "2px solid", outlineColor: "primary.main" },
+            }}
+          >
             <Avatar sx={{ width: 26, height: 26, fontSize: 12, bgcolor: pastelForString(userName, mode) }}>
               {avatarInitial(userName)}
             </Avatar>

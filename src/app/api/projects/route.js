@@ -3,23 +3,23 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectDB } from "@/lib/mongodb";
 import Project from "@/models/Project";
-import Task from "@/models/Task";
 import Team from "@/models/Team";
-import Column from "@/models/Column";
-import { toProjectDTO } from "@/lib/serialize";
+import { toProjectDTO, toProjectSummaryDTO } from "@/lib/serialize";
+import { countTasksByProjectIds } from "@/lib/taskCounts";
 import { isValidObjectId } from "@/lib/objectId";
-import { isTeamManager, accessibleTeamIds, filterAccessibleProjects } from "@/lib/authz";
+import { isTeamManager } from "@/lib/authz";
 import { parseJsonBody } from "@/lib/parseJsonBody";
 import { validateRequiredString, validateOptionalString } from "@/lib/validation";
 import { withMongoErrorHandling } from "@/lib/mongoErrors";
+import { MAX_PROJECT_NAME_LENGTH, MAX_PROJECT_DESCRIPTION_LENGTH } from "@/lib/fieldLimits";
+import { TEAM_POPULATE, MEMBERS_POPULATE, findAccessibleProjects } from "@/lib/projectQueries";
 
-const MAX_PROJECT_NAME_LENGTH = 150;
-const MAX_PROJECT_DESCRIPTION_LENGTH = 2000;
 
-const TEAM_POPULATE = { path: "team", populate: [{ path: "manager", select: "name email" }, { path: "members", select: "name email" }] };
-const MEMBERS_POPULATE = { path: "members", select: "name email" };
-const EDITORS_POPULATE = { path: "editors", select: "name email" };
-
+// The Projects page lists one card per project: name, description, team
+// name and "N of M done". So the list returns exactly that — see
+// toProjectSummaryDTO(). It deliberately does not carry columns, tasks, the
+// team roster or the editor list; GET /api/projects/[id] is where a
+// project's full board comes from.
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -27,43 +27,22 @@ export async function GET() {
 
   await connectDB();
 
-  const teamIds = await accessibleTeamIds(userId);
-
-  // This query is only a candidate set — every project belonging to a team
-  // the user is on. Team membership alone no longer guarantees access to
-  // a given project (see lib/authz.js), so the list is narrowed below with
-  // the same per-project check every other project route uses.
-  const candidateProjects = await Project.find({ $or: [{ manager: userId }, { team: { $in: teamIds } }] })
-    .populate("manager", "name email")
-    .populate(TEAM_POPULATE)
-    .populate(MEMBERS_POPULATE)
-    .populate(EDITORS_POPULATE)
-    .sort({ createdAt: -1 })
-    .lean();
-
-  const projects = filterAccessibleProjects(candidateProjects, userId);
-
-  const projectIds = projects.map((p) => p._id);
-  const [allColumns, allTasks] = await Promise.all([
-    Column.find({ project: { $in: projectIds } }).lean(),
-    // "-attachments.data" excludes the base64 file contents — toTaskDTO()
-    // never includes it in the response, so loading it here would just
-    // be several potentially-MB-sized reads per task thrown away before
-    // the response is built.
-    Task.find({ project: { $in: projectIds } })
-      .select("-attachments.data")
-      .populate("assignees", "name")
-      .sort({ order: 1 })
-      .lean(),
+  // Candidate set narrowed to the projects this user can actually access —
+  // team membership alone doesn't guarantee access (see lib/authz.js). That
+  // check reads ids only (manager, members, team.members), so the team's
+  // members come back unpopulated and `members`/`editors` are not populated.
+  const projects = await findAccessibleProjects(userId, [
+    { path: "manager", select: "name email" },
+    { path: "team", select: "name members" },
   ]);
 
-  const dtos = projects.map((p) =>
-    toProjectDTO(
-      p,
-      allColumns.filter((c) => String(c.project) === String(p._id)),
-      allTasks.filter((t) => String(t.project) === String(p._id))
-    )
-  );
+  // H2: a card needs "N of M done", so the database counts per project
+  // ($match + $group) and only those numbers come back — no task documents
+  // are loaded. A project with no tasks has no row; toProjectSummaryDTO
+  // reads that as 0 of 0.
+  const counts = await countTasksByProjectIds(projects.map((p) => p._id));
+
+  const dtos = projects.map((p) => toProjectSummaryDTO(p, counts.get(String(p._id))));
 
   return NextResponse.json(dtos);
 }
@@ -93,8 +72,8 @@ export async function POST(req) {
   await connectDB();
 
   const team = await Team.findById(teamId).lean();
-  if (!team) return NextResponse.json({ error: "Team not found" }, { status: 404 });
-  if (!isTeamManager(team, userId)) {
+  // L4: same response whether the team is missing or just not yours.
+  if (!team || !isTeamManager(team, userId)) {
     return NextResponse.json({ error: "Only the team manager can create projects for it" }, { status: 403 });
   }
 

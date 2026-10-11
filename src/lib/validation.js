@@ -13,10 +13,9 @@
 // `null` (where the field is nullable) means "clear it". Both are distinct
 // from an invalid value, which is always rejected.
 
-import { isValidObjectId } from "@/lib/objectId";
+import { isValidObjectId, normalizeObjectId } from "@/lib/objectId";
 import { normalizeEmail } from "@/lib/normalizeEmail";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+import { isValidEmail } from "@/lib/emailValidation";
 
 // A required, human-entered piece of text: title, name, etc. Trims
 // surrounding whitespace and rejects anything that's empty once trimmed —
@@ -59,14 +58,14 @@ export function validateEmailInput(value, { field = "email", maxLength = 254 } =
   if (typeof value !== "string" || !value.trim()) return { error: `${field} is required` };
   const normalized = normalizeEmail(value);
   if (normalized.length > maxLength) return { error: `${field} is too long` };
-  if (!EMAIL_RE.test(normalized)) return { error: `Please enter a valid ${field}` };
+  if (!isValidEmail(normalized)) return { error: `Please enter a valid ${field}` };
   return { value: normalized };
 }
 
 // A single ObjectId-shaped string.
 export function validateObjectIdField(value, { field = "id" } = {}) {
   if (!isValidObjectId(value)) return { error: `${field} is invalid` };
-  return { value };
+  return { value: normalizeObjectId(value) };
 }
 
 // An array of ObjectId-shaped strings. Verifies the value is actually an
@@ -83,10 +82,11 @@ export function validateObjectIdArray(value, { field = "ids", max = 500 } = {}) 
   const ids = [];
   for (const raw of value) {
     const id = typeof raw === "string" ? raw : String(raw ?? "");
-    if (!isValidObjectId(id)) return { error: `${field} contains an invalid id` };
-    if (!seen.has(id)) {
-      seen.add(id);
-      ids.push(id);
+    const canonical = normalizeObjectId(id);
+    if (!canonical) return { error: `${field} contains an invalid id` };
+    if (!seen.has(canonical)) {
+      seen.add(canonical);
+      ids.push(canonical);
     }
   }
   return { value: ids };

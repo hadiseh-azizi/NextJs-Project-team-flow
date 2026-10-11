@@ -11,7 +11,7 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // tasks/route.js POST and columns/[columnId]/route.js DELETE for why this
 // narrows, rather than eliminates, the race — true concurrent-transaction
 // behavior needs a real replica set and is out of reach for this mocked
-// suite; see the manual test matrix in CHANGELOG.md for that).
+// suite).
 //
 // These tests exercise the resulting code paths in isolation (column
 // missing, column non-empty, column present) rather than simulating true

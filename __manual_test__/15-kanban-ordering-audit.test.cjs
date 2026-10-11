@@ -9,8 +9,7 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // races), 04-done-column-transaction.test.cjs (done-column concurrency),
 // 05-task-create-transaction.test.cjs (new-task ordering), and
 // 02-mongo-transaction.test.cjs (transaction retry behavior) — those five
-// still pass unmodified and remain the coverage for their scenarios; see
-// KANBAN_ORDERING_AUDIT.md for the full scenario-to-test map.
+// still pass unmodified and remain the coverage for their scenarios.
 
 const PROJECT_ID = "111111111111111111111111";
 const COL_A = "222222222222222222222222";

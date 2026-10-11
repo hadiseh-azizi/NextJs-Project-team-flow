@@ -15,8 +15,7 @@ const { makeFakeRateLimitModel } = require("./fakeRateLimitModel.cjs");
 // NOT prove MongoDB actually executes concurrent findOneAndUpdate calls
 // against the same document with the atomicity this design depends on —
 // that's a property of MongoDB itself, not something a sandboxed unit
-// test can independently verify without a live server. See
-// CHANGELOG.md for this phase's manual test note.
+// test can independently verify without a live server.
 
 function setupMocks() {
   resetModuleCache();

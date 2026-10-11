@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Typography, IconButton, TextField, Menu, MenuItem, Tooltip, Alert, Snackbar, Button,
 } from "@mui/material";
@@ -24,8 +24,47 @@ import { applyColumnOrder } from "@/lib/columnReorder";
 import { useColumnDragReorder } from "@/lib/useColumnDragReorder";
 import { useCollapsedColumns } from "@/lib/useCollapsedColumns";
 import { COLLAPSED_COLUMN_WIDTH, COLLAPSE_MS, COLLAPSE_EASE } from "@/lib/collapsedColumns";
+import { columnContentWidthSx } from "@/lib/columnWidth";
+import { touchHitAreaSx, touchMinHeightSx, touchMinSizeSx } from "@/lib/touchTarget";
+import { visuallyHiddenSx } from "@/lib/a11y";
 
-export default function KanbanBoard({ projectId, columns, tasks, onChanged, assignableUsers, canEdit = true }) {
+// Errors stay on screen until the person dismisses them. A fixed timeout
+// can't suit everyone (reading speed, magnification, switch access), and an
+// error that vanishes before it's read looks like nothing happened. Clicking
+// elsewhere on the page must not dismiss it either, since that is usually the
+// very next thing someone does after a failed drop. The last message is kept
+// while the snackbar animates out so it doesn't empty itself first.
+function ErrorSnackbar({ message, onClose }) {
+  const lastMessage = useRef("");
+  if (message) lastMessage.current = message;
+  return (
+    <Snackbar
+      open={!!message}
+      onClose={(_, reason) => {
+        if (reason !== "clickaway") onClose();
+      }}
+    >
+      <Alert
+        severity="error"
+        onClose={onClose}
+        sx={{ "& .MuiAlert-action .MuiIconButton-root": touchMinSizeSx }}
+      >
+        {message || lastMessage.current}
+      </Alert>
+    </Snackbar>
+  );
+}
+
+// A successful change is applied to the page's copy of the project through
+// one of the `on…` callbacks below, using the entity the server returned.
+// `onChanged` (a full reload) is what each one falls back to when the
+// parent doesn't provide it, and what runs after a 409 conflict.
+export default function KanbanBoard({
+  projectId, columns, tasks, onChanged, onTaskPatched,
+  onTaskCreated, onTaskMoved, onTaskRemoved,
+  onColumnAdded, onColumnPatched, onColumnRemoved, onColumnsReordered,
+  assignableUsers, canEdit = true, animateEntrance = true,
+}) {
   const isMounted = useIsMounted();
   const [dragOverCol, setDragOverCol] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { columnId, taskId, position } | { columnId, position: "end" }
@@ -48,7 +87,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   const [removingTaskIds, setRemovingTaskIds] = useState(() => new Set());
   const [confirmDeleteColumn, setConfirmDeleteColumn] = useState(null);
   const [deleteColumnError, setDeleteColumnError] = useState("");
-  const [deleting, setDeleting] = useState(false);
+  // Task and column deletions each track their own in-flight state: they
+  // use separate dialogs and separate requests, so one finishing (or
+  // failing) must never clear, or hold on, the other's busy state.
+  const [deletingTask, setDeletingTask] = useState(false);
+  const [deletingColumn, setDeletingColumn] = useState(false);
   // Tasks with a move request currently in flight — a card can only be
   // dropped again once its previous move has resolved, so two overlapping
   // PATCHes for the same task (and the ordering confusion that would
@@ -58,6 +101,37 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   // from both onBlur and onKeyDown/Enter, which can fire close enough
   // together to both start a request for the same column).
   const renamingInFlight = useRef(new Set());
+
+  // Clears every transient task-drag indicator: the highlighted column and
+  // the "drop here" line.
+  const clearDragIndicators = useCallback(() => {
+    setDragOverCol(null);
+    setDropTarget(null);
+  }, []);
+
+  // Board-level safety net. A task drag can end without the board's own
+  // onDrop running — Esc, a drop outside any column or on a non-target, a
+  // drop on a collapsed column, the pointer leaving the window — and then
+  // no dragleave is guaranteed to arrive either. `dragend` fires at the end
+  // of every drag regardless of outcome (on the dragged card, and it bubbles
+  // here); `drop` covers the case where the card was re-rendered away and
+  // can no longer fire it. The window check handles the pointer leaving the
+  // page mid-drag, where the browser reports a dragleave with no target.
+  useEffect(() => {
+    function onDragLeaveDocument(e) {
+      if (e.relatedTarget) return;
+      const outside = e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight;
+      if (outside) clearDragIndicators();
+    }
+    document.addEventListener("dragend", clearDragIndicators);
+    document.addEventListener("drop", clearDragIndicators);
+    document.addEventListener("dragleave", onDragLeaveDocument);
+    return () => {
+      document.removeEventListener("dragend", clearDragIndicators);
+      document.removeEventListener("drop", clearDragIndicators);
+      document.removeEventListener("dragleave", onDragLeaveDocument);
+    };
+  }, [clearDragIndicators]);
 
   // Step 1 of task completion: confirm before marking it completed at all.
   const [completingTask, setCompletingTask] = useState(null);
@@ -134,7 +208,13 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   // column moves its DOM nodes, and browsers restart a CSS animation on
   // any node that is removed and re-inserted — this keeps a reorder from
   // replaying the fade-in on every column and card.
-  const seenIds = useRef(new Set());
+  // With animateEntrance={false} (a placeholder board was just on screen)
+  // the first columns and cards start out as already seen, so they replace
+  // the placeholders in place instead of fading in a second time.
+  const seenIds = useRef(null);
+  if (seenIds.current === null) {
+    seenIds.current = new Set(animateEntrance ? [] : [...columns.map((c) => c.id), ...tasks.map((t) => t.id)]);
+  }
   useEffect(() => {
     const timer = setTimeout(() => {
       columns.forEach((c) => seenIds.current.add(c.id));
@@ -164,7 +244,10 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
       // so the board never flashes back to the old order in between.
       if (Array.isArray(result?.columns)) setLocalOrder(result.columns.map((c) => c.id));
       savingOrder.current = false;
-      onChanged();
+      // The response is the whole confirmed order, so it is applied
+      // directly; no refetch of the board.
+      if (onColumnsReordered && Array.isArray(result?.columns)) onColumnsReordered(result.columns);
+      else onChanged();
     } catch (err) {
       savingOrder.current = false;
       if (!isMounted()) return;
@@ -194,7 +277,12 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     const midpoint = rect.top + rect.height / 2;
     const position = e.clientY < midpoint ? "before" : "after";
     setDragOverCol(columnId);
-    setDropTarget({ columnId, taskId: task.id, position });
+    // dragover fires continuously; only re-render when the target changes.
+    setDropTarget((prev) =>
+      prev && prev.columnId === columnId && prev.taskId === task.id && prev.position === position
+        ? prev
+        : { columnId, taskId: task.id, position }
+    );
   }
 
   // Fired over the empty background of a column (not over any specific
@@ -218,13 +306,33 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     );
   }
 
+  // dragleave bubbles up from every child element, so moving the pointer
+  // from the column background onto a card (or between two cards) fires it
+  // on the column even though the pointer is still inside. Only treat it as
+  // a real leave when the pointer actually left the column.
+  function handleColumnDragLeave(e, columnId) {
+    const column = e.currentTarget;
+    const next = e.relatedTarget;
+    if (next instanceof Node && column.contains(next)) return;
+    if (!next) {
+      // Some browsers (Safari) report no relatedTarget; fall back to the
+      // pointer position. (0, 0) means the browser gave no coordinates.
+      const r = column.getBoundingClientRect();
+      const { clientX: x, clientY: y } = e;
+      if ((x || y) && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return;
+    }
+    // Only undo this column's own indicators — moving straight into the
+    // next column must not wipe what that column is about to show.
+    setDragOverCol((prev) => (prev === columnId ? null : prev));
+    setDropTarget((prev) => (prev && prev.columnId === columnId ? null : prev));
+  }
+
   async function handleDrop(e, columnId) {
     e.preventDefault();
+    const target = dropTarget && dropTarget.columnId === columnId ? dropTarget : { columnId, position: "end" };
+    clearDragIndicators();
     if (!canEdit) return;
     const taskId = e.dataTransfer.getData("text/plain");
-    const target = dropTarget && dropTarget.columnId === columnId ? dropTarget : { columnId, position: "end" };
-    setDragOverCol(null);
-    setDropTarget(null);
 
     // Dropped on itself (e.g. hovered the card being dragged) — harmless,
     // nothing to do.
@@ -268,17 +376,21 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
 
     movingTaskIds.current.add(taskId);
     try {
-      await apiFetch(`/api/tasks/${taskId}`, {
+      const moved = await apiFetch(`/api/tasks/${taskId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ columnId, targetIndex }),
       });
-      if (isMounted()) onChanged();
+      // The response is the moved task (with its new column and order, and
+      // any siblings the server renumbered), applied in place.
+      if (isMounted()) {
+        if (onTaskMoved) onTaskMoved(moved);
+        else onChanged();
+      }
     } catch (err) {
-      // Local state was never mutated optimistically — it comes from
-      // `tasks`/`onChanged()` (a server refetch) — so a failed move
-      // leaves the board exactly as it was before the drag, no stale
-      // "task looks moved but isn't" state to undo.
+      // Local state is only ever changed from a successful response, so a
+      // failed move leaves the board exactly as it was before the drag, no
+      // stale "task looks moved but isn't" state to undo.
       if (isMounted()) setError(errorMessage(err, "Couldn't move the task. Please try again."));
     } finally {
       movingTaskIds.current.delete(taskId);
@@ -286,18 +398,18 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   }
 
   async function confirmTaskDelete() {
-    if (!confirmDeleteTask || deleting) return;
-    setDeleting(true);
+    if (!confirmDeleteTask || deletingTask) return;
+    setDeletingTask(true);
     setDeleteTaskError("");
     try {
       const deletedId = confirmDeleteTask.id;
       await apiFetch(`/api/tasks/${deletedId}`, { method: "DELETE" });
       if (!isMounted()) return;
       setConfirmDeleteTask(null);
-      // Play the exit animation for one short beat before the refetch
-      // (onChanged) removes the task from `tasks` for real — the DELETE
-      // has already succeeded at this point, so this is purely cosmetic,
-      // never a "does this look deleted" guess.
+      // Play the exit animation for one short beat before the task is
+      // removed from `tasks` for real — the DELETE has already succeeded
+      // at this point, so this is purely cosmetic, never a "does this look
+      // deleted" guess.
       setRemovingTaskIds((prev) => new Set(prev).add(deletedId));
       setTimeout(() => {
         if (!isMounted()) return;
@@ -307,14 +419,15 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           next.delete(deletedId);
           return next;
         });
-        onChanged();
+        if (onTaskRemoved) onTaskRemoved(deletedId);
+        else onChanged();
       }, 150);
     } catch (err) {
       // Keep the confirmation open so the error is actually visible —
       // it would otherwise render behind this still-open dialog.
       if (isMounted()) setDeleteTaskError(errorMessage(err, "Couldn't delete the task. Please try again."));
     } finally {
-      if (isMounted()) setDeleting(false);
+      if (isMounted()) setDeletingTask(false);
     }
   }
 
@@ -323,7 +436,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     if (!newColumnName.trim() || addingColumnSubmitting) return;
     setAddingColumnSubmitting(true);
     try {
-      await apiFetch(`/api/projects/${projectId}/columns`, {
+      const created = await apiFetch(`/api/projects/${projectId}/columns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newColumnName }),
@@ -331,7 +444,8 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
       if (!isMounted()) return;
       setNewColumnName("");
       setAddingColumn(false);
-      onChanged();
+      if (onColumnAdded) onColumnAdded(created);
+      else onChanged();
     } catch (err) {
       if (isMounted()) setError(errorMessage(err, "Couldn't add the column. Please try again."));
     } finally {
@@ -353,12 +467,15 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     if (renamingInFlight.current.has(columnId)) return;
     renamingInFlight.current.add(columnId);
     try {
-      await apiFetch(`/api/projects/${projectId}/columns/${columnId}`, {
+      const renamed = await apiFetch(`/api/projects/${projectId}/columns/${columnId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameValue }),
       });
-      if (isMounted()) onChanged();
+      if (isMounted()) {
+        if (onColumnPatched) onColumnPatched(columnId, { name: renamed.name });
+        else onChanged();
+      }
     } catch (err) {
       if (isMounted()) setError(errorMessage(err, "Couldn't rename the column. Please try again."));
     } finally {
@@ -375,12 +492,15 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     if (!canEdit) return;
     if (task.completed) {
       try {
-        await apiFetch(`/api/tasks/${task.id}`, {
+        const reopened = await apiFetch(`/api/tasks/${task.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ completed: false }),
         });
-        if (isMounted()) onChanged();
+        if (isMounted()) {
+          if (onTaskPatched) onTaskPatched(task.id, { completed: reopened.completed });
+          else onChanged();
+        }
       } catch (err) {
         if (isMounted()) setError(errorMessage(err, "Couldn't reopen the task. Please try again."));
       }
@@ -398,15 +518,17 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
     setCompletingBusy(true);
     setCompletingError("");
     try {
-      await apiFetch(`/api/tasks/${completingTask.id}`, {
+      const completed = await apiFetch(`/api/tasks/${completingTask.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completed: true }),
       });
       if (!isMounted()) return;
       setCompletingTask(null);
-      // Progress/dashboard stats must reflect the completion immediately.
-      onChanged();
+      // Progress is computed from the tasks held by the page, so patching
+      // the task's `completed` flag updates it immediately.
+      if (onTaskPatched) onTaskPatched(completingTask.id, { completed: completed.completed });
+      else onChanged();
       setNotice("Task completed.");
     } catch (err) {
       if (isMounted()) setCompletingError(errorMessage(err, "Couldn't complete the task. Please try again."));
@@ -416,14 +538,16 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
   }
 
   async function confirmColumnDelete() {
-    if (!confirmDeleteColumn || deleting) return;
-    setDeleting(true);
+    if (!confirmDeleteColumn || deletingColumn) return;
+    setDeletingColumn(true);
     setDeleteColumnError("");
     try {
-      await apiFetch(`/api/projects/${projectId}/columns/${confirmDeleteColumn.id}`, { method: "DELETE" });
+      const deletedColumnId = confirmDeleteColumn.id;
+      await apiFetch(`/api/projects/${projectId}/columns/${deletedColumnId}`, { method: "DELETE" });
       if (!isMounted()) return;
       setConfirmDeleteColumn(null);
-      onChanged();
+      if (onColumnRemoved) onColumnRemoved(deletedColumnId);
+      else onChanged();
     } catch (err) {
       // Deletion very commonly fails here because the column still has
       // tasks in it — that's expected and explained in the dialog's own
@@ -431,7 +555,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
       // rather than closing and losing that context.
       if (isMounted()) setDeleteColumnError(errorMessage(err, "This column can't be deleted"));
     } finally {
-      if (isMounted()) setDeleting(false);
+      if (isMounted()) setDeletingColumn(false);
     }
   }
 
@@ -459,11 +583,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
             ) : null
           }
         />
-        <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError("")}>
-          <Alert severity="error" onClose={() => setError("")}>
-            {error}
-          </Alert>
-        </Snackbar>
+        <ErrorSnackbar message={error} onClose={() => setError("")} />
       </>
     );
   }
@@ -478,7 +598,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         sx={{
           position: "relative",
           isolation: "isolate",
-          containerType: "inline-size", // lets a column's content be sized as 84cqw, matching its 84% flex-basis on phones
+          containerType: "inline-size", // lets a column's content be sized in cqw (see lib/columnWidth.js, which also has the fallback)
           display: "flex",
           gap: 1.5,
           overflowX: "auto",
@@ -541,7 +661,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               data-column-id={column.id}
               data-collapsed={collapsed ? "true" : undefined}
               onDragOver={collapsed ? undefined : (e) => (canEdit ? handleColumnDragOver(e, column.id) : e.preventDefault())}
-              onDragLeave={() => setDragOverCol(null)}
+              onDragLeave={(e) => handleColumnDragLeave(e, column.id)}
               onDrop={collapsed ? undefined : (e) => handleDrop(e, column.id)}
               sx={(theme) => ({
                 display: "grid",
@@ -608,7 +728,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               >
                 <Box sx={{ minHeight: 0, overflow: "hidden" }}>
                   {/* Fixed to the expanded column width so the content never re-wraps while the column animates. */}
-                  <Box sx={{ width: { xs: "84cqw", sm: 288 }, boxSizing: "border-box", p: 1 }}>
+                  <Box sx={{ ...columnContentWidthSx, boxSizing: "border-box", p: 1 }}>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, mb: 1, pl: canEdit && sortedColumns.length > 1 ? 0.25 : 1, pr: 0.25, minHeight: 32 }}>
                       {canEdit && sortedColumns.length > 1 && (
                         <Tooltip title="Drag to reorder column (or use the ← → keys)" enterDelay={500}>
@@ -627,6 +747,8 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                               cursor: "grab",
                               touchAction: "none", // only the handle; the rest of the board still scrolls by touch
                               flexShrink: 0,
+                              // 18px icon + 2px padding each side = 22px.
+                              ...touchHitAreaSx(22, { right: 3 }),
                               "&:hover": { color: "text.primary" },
                               "&:active": { cursor: "grabbing" },
                             }}
@@ -688,6 +810,8 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                             minWidth: 0,
                             cursor: canEdit ? "text" : "default",
                             transition: "color .12s ease",
+                            // Taller touch target; the negative margin cancels it so the row doesn't grow.
+                            ...(canEdit ? { "@media (pointer: coarse)": { py: "12px", my: "-12px" } } : {}),
                             "&:hover": canEdit ? { color: "primary.main" } : undefined,
                             "&:focus-visible": canEdit ? { outline: "2px solid", outlineColor: "primary.main", outlineOffset: "2px", borderRadius: 0.5 } : undefined,
                           }}
@@ -695,8 +819,11 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                           {column.name}
                         </Typography>
                       )}
-                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", px: 0.25 }} aria-label={`${colTasks.length} ${colTasks.length === 1 ? "task" : "tasks"}`}>
+                      <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, fontVariantNumeric: "tabular-nums", px: 0.25 }}>
                         {colTasks.length}
+                        <Box component="span" sx={visuallyHiddenSx}>
+                          {colTasks.length === 1 ? " task" : " tasks"}
+                        </Box>
                       </Typography>
                       <Tooltip title="Collapse column" enterDelay={500}>
                         <IconButton
@@ -705,7 +832,9 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                           aria-expanded={!collapsed}
                           aria-label={`Collapse column ${column.name}`}
                           onClick={() => handleToggleCollapsed(column)}
-                          sx={{ color: "text.secondary", "&:hover": { color: "text.primary" } }}
+                          // 20px icon + 5px padding each side = 30px; the options button
+                          // sits 6px to the right, so meet it halfway.
+                          sx={{ color: "text.secondary", "&:hover": { color: "text.primary" }, ...touchHitAreaSx(30, { left: 11, right: 3 }) }}
                         >
                           <ChevronLeftIcon sx={{ fontSize: 20 }} />
                         </IconButton>
@@ -719,6 +848,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                             setMenuAnchor(e.currentTarget);
                             setMenuColumn(column);
                           }}
+                          sx={touchHitAreaSx(30, { left: 3, right: 11 })}
                         >
                           <MoreHorizIcon sx={{ fontSize: 20 }} />
                         </IconButton>
@@ -762,7 +892,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
                         startIcon={<AddIcon sx={{ fontSize: 16 }} />}
                         onClick={() => setNewTaskColumnId(column.id)}
                         aria-label={`Add task to ${column.name}`}
-                        sx={{ mt: 0.5, justifyContent: "flex-start", color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" } }}
+                        sx={{ mt: 0.5, justifyContent: "flex-start", color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" }, ...touchMinHeightSx }}
                       >
                         Add task
                       </Button>
@@ -818,7 +948,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
               fullWidth
               startIcon={<AddIcon sx={{ fontSize: 16 }} />}
               onClick={() => setAddingColumn(true)}
-              sx={{ justifyContent: "flex-start", height: 40, px: 1.5, color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" } }}
+              sx={{ justifyContent: "flex-start", height: 40, px: 1.5, color: "text.secondary", fontWeight: 500, "&:hover": { color: "text.primary" }, ...touchMinHeightSx }}
             >
               New column
             </Button>
@@ -857,10 +987,14 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           canEdit={canEdit}
           onClose={() => setOpenTaskId(null)}
           onChanged={onChanged}
+          onPatched={onTaskPatched}
+          onMoved={onTaskMoved}
           onToggleComplete={handleToggleComplete}
           onDeleted={() => {
+            const deletedId = openTaskId;
             setOpenTaskId(null);
-            onChanged();
+            if (onTaskRemoved) onTaskRemoved(deletedId);
+            else onChanged();
           }}
         />
       )}
@@ -872,7 +1006,10 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           columnName={sortedColumns.find((c) => c.id === newTaskColumnId)?.name}
           assignableUsers={assignableUsers}
           onClose={() => setNewTaskColumnId(null)}
-          onCreated={onChanged}
+          onCreated={(created) => {
+            if (onTaskCreated && created) onTaskCreated(created);
+            else onChanged();
+          }}
         />
       )}
 
@@ -885,7 +1022,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           setConfirmDeleteTask(null);
           setDeleteTaskError("");
         }}
-        loading={deleting}
+        loading={deletingTask}
         error={deleteTaskError}
       />
 
@@ -898,7 +1035,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
           setConfirmDeleteColumn(null);
           setDeleteColumnError("");
         }}
-        loading={deleting}
+        loading={deletingColumn}
         error={deleteColumnError}
       />
 
@@ -919,11 +1056,7 @@ export default function KanbanBoard({ projectId, columns, tasks, onChanged, assi
         error={completingError}
       />
 
-      <Snackbar open={!!error} autoHideDuration={4000} onClose={() => setError("")}>
-        <Alert severity="error" onClose={() => setError("")}>
-          {error}
-        </Alert>
-      </Snackbar>
+      <ErrorSnackbar message={error} onClose={() => setError("")} />
 
       <Snackbar open={!!notice} autoHideDuration={3000} onClose={() => setNotice("")} message={notice} />
     </>

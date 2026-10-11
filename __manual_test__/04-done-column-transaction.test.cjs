@@ -6,8 +6,10 @@ const { mockModule, resetModuleCache } = require("./mockRequire.cjs");
 // flagged `isDoneColumn` per project. That concept is gone: every column is
 // equal and completion is the task's own flag. The filename is kept so older
 // docs that cite it stay valid; the checks below now guard the removal —
-// the column PATCH route renames/reorders one column and nothing else, and
-// a client that still sends `isDoneColumn` changes nothing.
+// the column PATCH route renames one column and nothing else (position is
+// owned by PATCH .../columns/order since audit item M21 - see
+// 54-column-order-invariants-m21.test.cjs), and a client that still sends
+// `isDoneColumn` changes nothing.
 
 function makeStore(rows) {
   const committed = new Map(rows.map((c) => [c._id, { ...c }]));
@@ -75,10 +77,10 @@ const patch = (body, columnId = A) =>
     assert.strictEqual(s.calls.updateMany, 0);
   });
 
-  await test("reorder (order field) still works", async () => {
+  await test("a raw `order` is not accepted by the column PATCH route (M21): 400, nothing written", async () => {
     const s = setup({ columns: [{ _id: A, project: "p1", name: "A", order: 0 }] });
-    assert.strictEqual((await patch({ order: 4 })).status, 200);
-    assert.strictEqual(s.committed.get(A).order, 4);
+    assert.strictEqual((await patch({ order: 4 })).status, 400);
+    assert.strictEqual(s.committed.get(A).order, 0);
   });
 
   await test("a client still sending isDoneColumn:true changes nothing — not stored, no other column touched", async () => {
