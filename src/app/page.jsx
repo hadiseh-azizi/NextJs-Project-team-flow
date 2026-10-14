@@ -183,10 +183,6 @@ export default function Home() {
       <Container maxWidth="lg" component="footer" sx={{ py: 3, borderTop: "1px solid", borderColor: "divider" }}>
         <Typography variant="caption" color="text.secondary">
            Designed by Hadiseh Azizi
-          <br />
-          Supervised by Dr. Ghanbarpur
-          <br />
-          Sistan and Baluchestan University
         </Typography>
       </Container>
     </Box>
